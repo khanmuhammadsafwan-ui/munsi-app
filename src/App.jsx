@@ -188,9 +188,14 @@ export default function App() {
 
   // ─── PROPERTY ───
   const handleAddProperty = async (info) => {
-    await DB.addProperty(user.uid, info);
-    await loadLandlordData(user.uid);
-    notify(bn ? "✓ বাড়ি যোগ হয়েছে" : "✓ Property added");
+    try {
+      await DB.addProperty(user.uid, info);
+      await loadLandlordData(user.uid);
+      notify(bn ? "✓ বাড়ি যোগ হয়েছে" : "✓ Property added");
+    } catch (e) {
+      console.error("addProperty error:", e);
+      notify("❌ " + (bn ? "সমস্যা হয়েছে: " : "Error: ") + e.message);
+    }
   };
 
   // ─── ASSIGN/UNASSIGN ───
@@ -732,11 +737,11 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       </div>}
     </div>
 
-    {modal === "addProp" && <AddPropModal bn={bn} onSave={p => { addProperty(p); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal === "addProp" && <AddPropModal bn={bn} onSave={async (p) => { await addProperty(p); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "assign" && edit && <AssignModal bn={bn} unitId={edit.unitId} tenants={unassigned}
-      onSave={(tid, rent, adv, date, notes) => { assignTenant(tid, edit.unitId, rent, adv, date, notes); setModal(null); }} onClose={() => setModal(null)} />}
+      onSave={async (tid, rent, adv, date, notes) => { await assignTenant(tid, edit.unitId, rent, adv, date, notes); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "pay" && edit && <PayModal bn={bn} tenant={edit} mk={mk}
-      onSave={p => { recordPayment(p); setModal(null); }} onClose={() => setModal(null)} />}
+      onSave={async (p) => { await recordPayment(p); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "detail" && edit && <div className="ov" onClick={() => setModal(null)}>
       <div className="mdl" onClick={e => e.stopPropagation()}>
         <h3 style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 8 }}>{edit.name}</h3>
@@ -826,8 +831,14 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 // ═══ MODALS ═══
 function AddPropModal({ bn, onSave, onClose }) {
   const [f, sF] = useState({ name: "", address: "", location: "", floors: 5, unitsPerFloor: 4, unitType: "flat", color: "#10B981" });
+  const [busy, setBusy] = useState(false);
   const set = (k, v) => sF(o => ({ ...o, [k]: v }));
   const cols = ["#10B981", "#6366F1", "#F97316", "#EAB308", "#06B6D4", "#EC4899", "#3B82F6"];
+  const handleSave = async () => {
+    if (!f.name || !f.address || busy) return;
+    setBusy(true);
+    try { await onSave(f); } catch(e) { console.error(e); } finally { setBusy(false); }
+  };
   return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>🏘️ {bn ? "নতুন বাড়ি" : "New Property"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -847,7 +858,7 @@ function AddPropModal({ bn, onSave, onClose }) {
     </div>
     <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
       <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
-      <button className="btn bp" style={{ flex: 1 }} onClick={() => { if (f.name && f.address) onSave(f); }}>{bn ? "যোগ করুন" : "Add"}</button>
+      <button className="btn bp" style={{ flex: 1 }} onClick={handleSave} disabled={busy}>{busy ? "⏳..." : (bn ? "যোগ করুন" : "Add")}</button>
     </div>
   </div></div>;
 }
