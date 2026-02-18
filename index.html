@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="bn">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/munsi.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#060B16" />
+    <meta name="description" content="মুন্সী — আপনার ডিজিটাল হিসাবরক্ষক। Smart Rent Management Platform for Bangladesh." />
+    <title>মুন্সী | Munsi — Smart Rent Manager</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #060B16; font-family: system-ui, sans-serif; }
+      #root { min-height: 100vh; }
+      .splash{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#060B16}
+      .splash-inner{text-align:center;color:#fff}
+      .splash-icon{font-size:56px;margin-bottom:12px;animation:pulse 1.5s infinite}
+      .splash-name{font-size:28px;font-weight:800;background:linear-gradient(135deg,#34D399,#60A5FA);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .splash-sub{font-size:10px;color:#475569;margin-top:8px;letter-spacing:3px}
+      @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="splash"><div class="splash-inner">
+        <div class="splash-icon">📒</div>
+        <div class="splash-name">মুন্সী</div>
+        <div class="splash-sub">SMART RENT MANAGER</div>
+      </div></div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
