@@ -47,6 +47,8 @@ export default function App() {
   const [myLandlord, setMyLandlord] = useState(null);
   const [myTenant, setMyTenant] = useState(null);
   const [notices, setNotices] = useState([]);
+  const [agreements, setAgreements] = useState([]);
+  const [expenses, setExpenses] = useState([]);
 
   const notify = (m) => { setToast(m); setTimeout(() => setToast(null), 2800); };
 
@@ -92,8 +94,14 @@ export default function App() {
     setProperties(p);
     setUnits(u);
     setPayments(pay);
-    const nots = await DB.getNoticesForUser(uid);
+    const [nots, agrs, exps] = await Promise.all([
+      DB.getNoticesForUser(uid),
+      DB.getAgreementsByLandlord(uid),
+      DB.getExpensesByLandlord(uid),
+    ]);
     setNotices(nots);
+    setAgreements(agrs);
+    setExpenses(exps);
   };
 
   const loadTenantData = async (uid) => {
@@ -103,14 +111,18 @@ export default function App() {
       const ll = await DB.getLandlord(t.landlordId);
       setMyLandlord(ll);
     }
-    const pay = await DB.getPaymentsByTenant(uid);
+    const [pay, allU, allP, nots, agrs] = await Promise.all([
+      DB.getPaymentsByTenant(uid),
+      DB.getAllUnits(),
+      DB.getAllProperties(),
+      DB.getNoticesForUser(uid),
+      DB.getAgreementsByTenant(uid),
+    ]);
     setPayments(pay);
-    const allU = await DB.getAllUnits();
     setUnits(allU);
-    const allP = await DB.getAllProperties();
     setProperties(allP);
-    const nots = await DB.getNoticesForUser(uid);
     setNotices(nots);
+    setAgreements(agrs);
   };
 
   const loadAdminData = async () => {
@@ -271,6 +283,22 @@ export default function App() {
     try { await DB.markNoticeRead(noticeId); await refresh(); } catch (e) { /* silent */ }
   };
 
+  // Feature #1: Agreements
+  const handleCreateAgreement = async (data) => {
+    try { await DB.createAgreement(data); await refresh(); notify(bn ? "✓ চুক্তি তৈরি" : "✓ Agreement created"); } catch (e) { notify("❌ " + e.message); }
+  };
+  // Feature #3: Rent Change
+  const handleRentChange = async (tenantId, newRent, reason) => {
+    try { await DB.updateTenantRent(tenantId, newRent, reason); await refresh(); notify(bn ? "✓ ভাড়া আপডেট" : "✓ Rent updated"); } catch (e) { notify("❌ " + e.message); }
+  };
+  // Feature #7: Expenses
+  const handleAddExpense = async (data) => {
+    try { await DB.addExpense({ ...data, landlordId: user.uid }); await refresh(); notify(bn ? "✓ খরচ যোগ" : "✓ Expense added"); } catch (e) { notify("❌ " + e.message); }
+  };
+  const handleDeleteExpense = async (id) => {
+    try { await DB.deleteExpense(id); await refresh(); notify(bn ? "✓ মুছে ফেলা হয়েছে" : "✓ Deleted"); } catch (e) { notify("❌ " + e.message); }
+  };
+
   const handleLogout = async () => { await signOut(auth); };
 
   if (loading) return <SplashScreen />;
@@ -303,6 +331,9 @@ export default function App() {
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           notices={notices} onSendNotice={handleSendNotice}
           onUpdateNoticeStatus={handleUpdateNoticeStatus} onMarkNoticeRead={handleMarkNoticeRead}
+          agreements={agreements} onCreateAgreement={handleCreateAgreement}
+          expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense}
+          onRentChange={handleRentChange}
           selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={() => loadLandlordData(user.uid)} />
       )}
 
@@ -312,7 +343,8 @@ export default function App() {
           recordPayment={handlePayment} selM={selM} selY={selY} mk={mk}
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           onSendNotice={handleSendNotice} notices={notices}
-          onUpdateNoticeStatus={handleUpdateNoticeStatus} />
+          onUpdateNoticeStatus={handleUpdateNoticeStatus}
+          agreements={agreements} />
       )}
     </div>
   );
@@ -859,7 +891,7 @@ function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setS
 }
 
 // ═══ LANDLORD PANEL ═══
-function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, agreements, onCreateAgreement, expenses, onAddExpense, onDeleteExpense, onRentChange, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [selProp, setSelProp] = useState(null);
   const [selFloor, setSelFloor] = useState(null);
@@ -895,6 +927,11 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
   const unassigned = tenants.filter(t => !t.unitId);
   const unreadNotices = (notices || []).filter(n => n.toId === me?.id && !n.read);
   const openNotices = (notices || []).filter(n => n.toId === me?.id && n.status !== "resolved");
+
+  // Expenses this month
+  const mExp = (expenses || []).filter(e => (e.date || e.createdAt || "").startsWith(`${selY}-${String(selM + 1).padStart(2, "0")}`));
+  const totalExpenses = mExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const netProfit = totalCollected - totalExpenses;
 
   const prop = selProp ? properties.find(p => p.id === selProp) : null;
   const pUnits = selProp ? units.filter(u => u.propertyId === selProp) : [];
@@ -937,11 +974,14 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       </div>
 
       {/* Sub-tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
         {[{ k: "properties", l: bn ? "🏘️ বাড়ি" : "🏘️ Properties" },
           { k: "payments", l: bn ? "💰 পেমেন্ট" : "💰 Payments" },
+          { k: "analytics", l: bn ? "📊 বিশ্লেষণ" : "📊 Analytics" },
+          { k: "expenses", l: bn ? "🧾 খরচ" : "🧾 Expenses" },
+          { k: "agreements", l: bn ? "📜 চুক্তি" : "📜 Agreements" },
           { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${unreadNotices.length ? ` (${unreadNotices.length})` : ""}` },
-        ].map(t => <div key={t.k} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); setSelNotice(null); }} style={{ padding: "8px 16px", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600, background: tab2 === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab2 === t.k ? "#34D399" : "#475569", border: `1px solid ${tab2 === t.k ? "rgba(16,185,129,.2)" : "transparent"}` }}>{t.l}</div>)}
+        ].map(t => <div key={t.k} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); setSelNotice(null); }} style={{ padding: "8px 14px", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", background: tab2 === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab2 === t.k ? "#34D399" : "#475569", border: `1px solid ${tab2 === t.k ? "rgba(16,185,129,.2)" : "transparent"}` }}>{t.l}</div>)}
       </div>
 
       {selProp && tab2 === "properties" && <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569" }}>
@@ -1079,6 +1119,275 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
         </div>}
       </div>}
 
+      {/* ═══ ANALYTICS TAB (Feature #4) ═══ */}
+      {tab2 === "analytics" && <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>📊 {bn ? "বিশ্লেষণ" : "Analytics"} — {(bn ? MBN : MEN)[selM]}</h3>
+          <button className="btn bg bs" onClick={() => {
+            const w = window.open("", "_blank", "width=800,height=900");
+            const rpt = `<html><head><meta charset="utf-8"><title>${bn ? "মুন্সী — মাসিক রিপোর্ট" : "Munsi Monthly Report"}</title>
+            <style>body{font-family:sans-serif;padding:30px;color:#222}h1{color:#10B981;margin-bottom:4px}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:13px}th{background:#f5f5f5;font-weight:700}.amt{text-align:right;font-weight:700}.green{color:#10B981}.red{color:#EF4444}.orange{color:#F97316}.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}</style></head><body>
+            <h1>🏠 ${bn ? "মুন্সী — মাসিক রিপোর্ট" : "Munsi — Monthly Report"}</h1>
+            <p>${(bn ? MBN : MEN)[selM]} ${selY} • ${me?.name}</p>
+            <h3>${bn ? "সারাংশ" : "Summary"}</h3>
+            <table><tr><th>${bn ? "বিষয়" : "Item"}</th><th class="amt">${bn ? "পরিমাণ" : "Amount"}</th></tr>
+            <tr><td>${bn ? "ভাড়া আদায়" : "Rent Collected"}</td><td class="amt green">৳${rentCollected.toLocaleString()}</td></tr>
+            <tr><td>${bn ? "বিল আদায়" : "Utility Bills"}</td><td class="amt green">৳${utilCollected.toLocaleString()}</td></tr>
+            <tr><td>${bn ? "মোট আয়" : "Total Income"}</td><td class="amt green">৳${totalCollected.toLocaleString()}</td></tr>
+            <tr><td>${bn ? "মোট খরচ" : "Total Expenses"}</td><td class="amt orange">৳${totalExpenses.toLocaleString()}</td></tr>
+            <tr style="font-size:15px"><td><strong>${bn ? "নেট মুনাফা" : "Net Profit"}</strong></td><td class="amt ${netProfit >= 0 ? "green" : "red"}"><strong>৳${netProfit.toLocaleString()}</strong></td></tr></table>
+            <h3>${bn ? "ভাড়াটিয়া অবস্থা" : "Tenant Status"}</h3>
+            <table><tr><th>${bn ? "নাম" : "Name"}</th><th>${bn ? "ইউনিট" : "Unit"}</th><th class="amt">${bn ? "ভাড়া" : "Rent"}</th><th class="amt">${bn ? "পরিশোধ" : "Paid"}</th><th>${bn ? "অবস্থা" : "Status"}</th></tr>
+            ${tenants.filter(t => t.unitId).map(t => {
+              const tPay = mRent.filter(p => p.tenantId === t.id);
+              const paid = tPay.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+              const u = units.find(x => x.id === t.unitId);
+              const ok = paid >= t.rent;
+              return `<tr><td>${t.name}</td><td>${u?.unitNo || "—"}</td><td class="amt">৳${t.rent?.toLocaleString()}</td><td class="amt">৳${paid.toLocaleString()}</td><td><span class="badge" style="background:${ok ? "#D1FAE5" : "#FEE2E2"};color:${ok ? "#065F46" : "#991B1B"}">${ok ? (bn ? "✅ পরিশোধিত" : "✅ Paid") : (bn ? "⏳ বাকি" : "⏳ Due")}</span></td></tr>`;
+            }).join("")}</table>
+            <p style="text-align:center;color:#999;font-size:11px;margin-top:30px">${bn ? "মুন্সী — বাড়িওয়ালা ম্যানেজমেন্ট সিস্টেম" : "Munsi — Property Management System"} • ${new Date().toLocaleDateString()}</p>
+            <script>window.print();</script></body></html>`;
+            w.document.write(rpt);
+            w.document.close();
+          }}>🖨️ {bn ? "রিপোর্ট প্রিন্ট" : "Print Report"}</button>
+        </div>
+
+        {/* Summary Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }} className="rg2">
+          {[{ l: bn ? "মোট আদায়" : "Total Income", v: totalCollected, c: "#34D399", i: "💰" },
+            { l: bn ? "মোট খরচ" : "Expenses", v: totalExpenses, c: "#F97316", i: "🧾" },
+            { l: bn ? "নেট মুনাফা" : "Net Profit", v: netProfit, c: netProfit >= 0 ? "#10B981" : "#EF4444", i: netProfit >= 0 ? "📈" : "📉" },
+            { l: bn ? "দখলকৃত" : "Occupied", v: `${units.filter(u => !u.isVacant).length}/${units.length}`, c: "#6366F1", i: "🏠" },
+          ].map((s, i) => <div key={i} className="G" style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{s.i}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: s.c }}>{typeof s.v === "number" ? `৳${bn ? FM(s.v) : FE(s.v)}` : s.v}</div>
+            <div style={{ fontSize: 10, color: "#475569" }}>{s.l}</div>
+          </div>)}
+        </div>
+
+        {/* 6-Month Trend */}
+        <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>📈 {bn ? "৬ মাসের ট্রেন্ড" : "6-Month Trend"}</h4>
+          {(() => {
+            const months = [];
+            for (let i = 5; i >= 0; i--) {
+              let m = selM - i, y = selY;
+              if (m < 0) { m += 12; y--; }
+              const key = MK(m, y);
+              const mP = myPayments.filter(p => p.monthKey === key);
+              const inc = mP.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+              const exp = (expenses || []).filter(e => (e.date || e.createdAt || "").startsWith(`${y}-${String(m + 1).padStart(2, "0")}`)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+              months.push({ label: (bn ? MBN : MEN)[m].slice(0, 3), inc, exp, net: inc - exp });
+            }
+            const maxV = Math.max(...months.map(m => Math.max(m.inc, m.exp)), 1);
+            return <div>
+              <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 120, marginBottom: 8 }}>
+                {months.map((m, i) => <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <div style={{ display: "flex", gap: 1, alignItems: "flex-end", width: "100%", justifyContent: "center" }}>
+                    <div style={{ width: "40%", height: Math.max((m.inc / maxV) * 100, 2), background: "#34D399", borderRadius: "3px 3px 0 0", transition: "height .5s" }} />
+                    <div style={{ width: "40%", height: Math.max((m.exp / maxV) * 100, 2), background: "#F97316", borderRadius: "3px 3px 0 0", transition: "height .5s" }} />
+                  </div>
+                </div>)}
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {months.map((m, i) => <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "#475569" }}>{m.label}</div>
+                  <div style={{ fontSize: 8, color: m.net >= 0 ? "#10B981" : "#EF4444", fontWeight: 600 }}>{m.net >= 0 ? "+" : ""}৳{Math.abs(m.net) > 999 ? `${(m.net / 1000).toFixed(0)}k` : m.net}</div>
+                </div>)}
+              </div>
+              <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 10, fontSize: 10, color: "#64748B" }}>
+                <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: "#34D399", marginRight: 4 }} />{bn ? "আয়" : "Income"}</span>
+                <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: "#F97316", marginRight: 4 }} />{bn ? "খরচ" : "Expense"}</span>
+              </div>
+            </div>;
+          })()}
+        </div>
+
+        {/* Income Breakdown */}
+        <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>💰 {bn ? "আয়ের বিভাজন" : "Income Breakdown"}</h4>
+          {(() => {
+            const barW = (v, max) => max ? `${Math.max((v / max) * 100, 2)}%` : "2%";
+            const maxV = Math.max(rentCollected, utilCollected, 1);
+            return [{ l: bn ? "ভাড়া" : "Rent", v: rentCollected, c: "#34D399" }, { l: bn ? "ইউটিলিটি" : "Utility", v: utilCollected, c: "#FBBF24" }].map((b, i) =>
+              <div key={i} style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                  <span style={{ color: "#94A3B8" }}>{b.l}</span><span style={{ fontWeight: 700, color: b.c }}>৳{bn ? FM(b.v) : FE(b.v)}</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,.03)" }}>
+                  <div style={{ height: 8, borderRadius: 4, background: b.c, width: barW(b.v, maxV), transition: "width .5s" }} />
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Tenant Payment Status */}
+        <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>👥 {bn ? "ভাড়াটিয়ার অবস্থা" : "Tenant Status"}</h4>
+          {tenants.filter(t => t.unitId).map(t => {
+            const tPays = mPay.filter(p => p.tenantId === t.id && (!p.type || p.type === "rent"));
+            const paid = tPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+            const remaining = Math.max(t.rent - paid, 0);
+            const pct = t.rent ? Math.min((paid / t.rent) * 100, 100) : 0;
+            const u = units.find(x => x.id === t.unitId);
+            return <div key={t.id} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>{t.name} <span style={{ color: "#475569" }}>({u?.unitNo})</span></span>
+                <span>৳{bn ? FM(paid) : FE(paid)} / ৳{bn ? FM(t.rent) : FE(t.rent)} {remaining > 0 && <span style={{ color: "#F59E0B" }}>({bn ? "বাকি" : "due"}: ৳{bn ? FM(remaining) : FE(remaining)})</span>}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,.03)" }}>
+                <div style={{ height: 6, borderRadius: 3, background: pct >= 100 ? "#10B981" : pct > 0 ? "#F59E0B" : "#EF4444", width: `${Math.max(pct, 2)}%` }} />
+              </div>
+            </div>;
+          })}
+        </div>
+
+        {/* Property Occupancy */}
+        <div className="G" style={{ padding: 18 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>🏘️ {bn ? "দখল অবস্থা" : "Occupancy"}</h4>
+          {properties.map(p => {
+            const pu = units.filter(u => u.propertyId === p.id);
+            const occ = pu.filter(u => !u.isVacant).length;
+            const pct = pu.length ? (occ / pu.length) * 100 : 0;
+            return <div key={p.id} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, color: p.color || "#34D399" }}>{p.name}</span>
+                <span>{occ}/{pu.length} ({Math.round(pct)}%)</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,.03)" }}>
+                <div style={{ height: 6, borderRadius: 3, background: p.color || "#10B981", width: `${Math.max(pct, 2)}%` }} />
+              </div>
+            </div>;
+          })}
+        </div>
+
+        {/* Auto Reminder (Feature #5) */}
+        {dueT.length > 0 && <div className="G" style={{ padding: 18, marginTop: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h4 style={{ fontSize: 13, fontWeight: 700 }}>🔔 {bn ? "অটো রিমাইন্ডার" : "Auto Reminder"}</h4>
+              <div style={{ fontSize: 11, color: "#475569" }}>{dueT.length} {bn ? "জনের ভাড়া বাকি" : "tenants have dues"}</div>
+            </div>
+            <button className="btn bp" onClick={async () => {
+              const notices = dueT.map(t => ({
+                fromId: me?.id, toId: t.uid || t.id,
+                subject: bn ? `${(bn ? MBN : MEN)[selM]} মাসের ভাড়া বাকি` : `${(bn ? MBN : MEN)[selM]} rent due`,
+                message: bn ? `প্রিয় ${t.name}, আপনার ${(bn ? MBN : MEN)[selM]} মাসের ভাড়া ৳${t.rent} এখনো পরিশোধ হয়নি। অনুগ্রহ করে দ্রুত পরিশোধ করুন।` : `Dear ${t.name}, your rent ৳${t.rent} for ${MEN[selM]} is pending. Please pay soon.`,
+                toAll: false,
+              }));
+              for (const n of notices) await onSendNotice(n);
+            }}>📨 {bn ? `সবাইকে রিমাইন্ডার (${dueT.length})` : `Remind All (${dueT.length})`}</button>
+          </div>
+        </div>}
+      </div>}
+
+      {/* ═══ EXPENSES TAB (Feature #7) ═══ */}
+      {tab2 === "expenses" && <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>🧾 {bn ? "খরচ" : "Expenses"}</h3>
+          <button className="btn bp bs" onClick={() => setModal("addExpense")}>➕ {bn ? "খরচ যোগ" : "Add"}</button>
+        </div>
+
+        {/* Monthly summary */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <div className="G" style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: "#475569" }}>💰 {bn ? "আদায়" : "Income"}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#34D399" }}>৳{bn ? FM(totalCollected) : FE(totalCollected)}</div>
+          </div>
+          <div className="G" style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: "#475569" }}>🧾 {bn ? "খরচ" : "Expenses"}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#F97316" }}>৳{bn ? FM(totalExpenses) : FE(totalExpenses)}</div>
+          </div>
+          <div className="G" style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: "#475569" }}>{netProfit >= 0 ? "📈" : "📉"} {bn ? "মুনাফা" : "Profit"}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: netProfit >= 0 ? "#10B981" : "#EF4444" }}>৳{bn ? FM(netProfit) : FE(netProfit)}</div>
+          </div>
+        </div>
+
+        {/* Expense category breakdown */}
+        {(() => {
+          const EXP_CATS = [
+            { k: "repair", l: bn ? "মেরামত" : "Repair", i: "🔧", c: "#F97316" },
+            { k: "paint", l: bn ? "রং/সাজসজ্জা" : "Paint/Decor", i: "🎨", c: "#EC4899" },
+            { k: "plumbing", l: bn ? "প্লাম্বিং" : "Plumbing", i: "🚿", c: "#38BDF8" },
+            { k: "electric", l: bn ? "ইলেক্ট্রিক্যাল" : "Electrical", i: "⚡", c: "#FBBF24" },
+            { k: "cleaning", l: bn ? "পরিষ্কার" : "Cleaning", i: "🧹", c: "#34D399" },
+            { k: "tax", l: bn ? "কর/ফি" : "Tax/Fee", i: "🏛️", c: "#A78BFA" },
+            { k: "other", l: bn ? "অন্যান্য" : "Other", i: "📦", c: "#94A3B8" },
+          ];
+          return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
+            {EXP_CATS.map(cat => {
+              const catExp = mExp.filter(e => e.category === cat.k);
+              const total = catExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+              if (total === 0) return null;
+              return <div key={cat.k} style={{ padding: "8px 12px", borderRadius: 10, background: `${cat.c}08`, border: `1px solid ${cat.c}12` }}>
+                <span style={{ fontSize: 14 }}>{cat.i}</span> <span style={{ fontSize: 11, color: cat.c, fontWeight: 600 }}>{cat.l}</span>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>৳{bn ? FM(total) : FE(total)}</div>
+              </div>;
+            })}
+          </div>;
+        })()}
+
+        {/* Expense list */}
+        <div className="G" style={{ overflow: "hidden" }}>
+          {(expenses || []).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, 30).map(e => <div key={e.id} className="row">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 16 }}>{e.category === "repair" ? "🔧" : e.category === "paint" ? "🎨" : e.category === "plumbing" ? "🚿" : e.category === "electric" ? "⚡" : e.category === "cleaning" ? "🧹" : e.category === "tax" ? "🏛️" : "📦"}</div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 12 }}>{e.description || e.category}</div>
+                <div style={{ fontSize: 9, color: "#475569" }}>{(e.date || e.createdAt || "").split("T")[0]} {e.propertyName ? `• ${e.propertyName}` : ""}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontWeight: 800, color: "#F97316" }}>৳{bn ? FM(e.amount) : FE(e.amount)}</span>
+              <span style={{ cursor: "pointer", fontSize: 12, opacity: .5 }} onClick={() => { if (confirm(bn ? "মুছবেন?" : "Delete?")) onDeleteExpense(e.id); }}>🗑️</span>
+            </div>
+          </div>)}
+          {(!expenses || expenses.length === 0) && <div style={{ padding: 40, textAlign: "center", color: "#475569" }}>{bn ? "কোনো খরচ নেই" : "No expenses"}</div>}
+        </div>
+      </div>}
+
+      {/* ═══ AGREEMENTS TAB (Feature #1) ═══ */}
+      {tab2 === "agreements" && <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>📜 {bn ? "চুক্তিপত্র" : "Agreements"}</h3>
+          <button className="btn bp bs" onClick={() => setModal("addAgreement")}>➕ {bn ? "নতুন চুক্তি" : "New"}</button>
+        </div>
+        {(!agreements || agreements.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>📜</div>
+          {bn ? "কোনো চুক্তি নেই" : "No agreements"}
+        </div> :
+          agreements.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).map(a => {
+            const t = tenants.find(x => x.id === a.tenantId);
+            const u = t ? units.find(x => x.id === t.unitId) : null;
+            return <div key={a.id} className="G" style={{ padding: 16, marginBottom: 10, borderLeft: `3px solid ${a.status === "active" ? "#10B981" : "#475569"}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{a.tenantName || t?.name}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{u?.unitNo || ""} • 📞 {a.tenantPhone || t?.phone}</div>
+                </div>
+                <span className="badge" style={{ background: a.status === "active" ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.04)", color: a.status === "active" ? "#34D399" : "#475569" }}>{a.status === "active" ? (bn ? "সক্রিয়" : "Active") : (bn ? "বাতিল" : "Ended")}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 10 }}>
+                <div style={{ padding: "6px 10px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{bn ? "ভাড়া" : "Rent"}</div>
+                  <div style={{ fontWeight: 700, color: "#34D399", fontSize: 13 }}>৳{bn ? FM(a.rent) : FE(a.rent)}</div>
+                </div>
+                <div style={{ padding: "6px 10px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{bn ? "অগ্রিম" : "Advance"}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>৳{bn ? FM(a.advance || 0) : FE(a.advance || 0)}</div>
+                </div>
+                <div style={{ padding: "6px 10px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{bn ? "শুরু" : "Start"}</div>
+                  <div style={{ fontWeight: 600, fontSize: 11 }}>{a.startDate}</div>
+                </div>
+              </div>
+              {a.terms && <div style={{ marginTop: 8, fontSize: 11, color: "#64748B", padding: "8px 10px", background: "rgba(255,255,255,.01)", borderRadius: 8, lineHeight: 1.5 }}>📝 {a.terms}</div>}
+            </div>;
+          })}
+      </div>}
+
       {/* ═══ NOTICES TAB ═══ */}
       {tab2 === "notices" && <div>
         {!selNotice ? <>
@@ -1213,34 +1522,52 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
             </div>)}
         </div>
 
-        {/* This tenant's payments this month */}
+        {/* Partial Payment Tracking (Feature #6) */}
         {(() => {
           const tPays = mPay.filter(p => p.tenantId === edit.id);
           const tRent = tPays.filter(p => !p.type || p.type === "rent");
-          const tUtil = tPays.filter(p => p.type && p.type !== "rent");
-          return tPays.length > 0 && <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#34D399", marginBottom: 8 }}>{(bn ? MBN : MEN)[selM]} {bn ? "পেমেন্ট:" : "payments:"}</div>
-            {tPays.map(p => {
+          const totalPaid = tRent.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+          const remaining = Math.max(edit.rent - totalPaid, 0);
+          const pct = edit.rent ? Math.min((totalPaid / edit.rent) * 100, 100) : 0;
+          return <div style={{ marginBottom: 14, padding: 12, background: "rgba(255,255,255,.02)", borderRadius: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 6 }}>
+              <span style={{ color: "#94A3B8" }}>{(bn ? MBN : MEN)[selM]} {bn ? "পেমেন্ট" : "payment"}</span>
+              <span>৳{bn ? FM(totalPaid) : FE(totalPaid)} / ৳{bn ? FM(edit.rent) : FE(edit.rent)}</span>
+            </div>
+            <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,.04)", marginBottom: 6 }}>
+              <div style={{ height: 8, borderRadius: 4, background: pct >= 100 ? "#10B981" : "#F59E0B", width: `${Math.max(pct, 2)}%` }} />
+            </div>
+            {remaining > 0 && <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 600 }}>⚠️ {bn ? "বাকি" : "Remaining"}: ৳{bn ? FM(remaining) : FE(remaining)}</div>}
+            {tPays.length > 0 && tPays.map(p => {
               const isR = !p.type || p.type === "rent";
               const ut = UTIL_TYPES.find(u => u.k === p.type);
-              const pm = PAY.find(m => m.k === p.method);
-              return <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 14 }}>{isR ? "🏠" : (ut?.i || "📦")}</span>
-                  <span style={{ fontSize: 11, color: "#94A3B8" }}>{isR ? (bn ? "ভাড়া" : "Rent") : (ut?.l || p.type)}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontWeight: 800, color: isR ? "#34D399" : (ut?.c || "#fff"), fontSize: 13 }}>৳{bn ? FM(p.amount) : FE(p.amount)}</span>
-                  <span style={{ fontSize: 8, color: "#475569" }}>{pm?.i}</span>
-                </div>
+              return <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderTop: "1px solid rgba(255,255,255,.02)", fontSize: 11, marginTop: 4 }}>
+                <span>{isR ? "🏠" : (ut?.i || "📦")} {isR ? (bn ? "ভাড়া" : "Rent") : (ut?.l || p.type)} • {p.paidAt?.split("T")[0]}</span>
+                <span style={{ fontWeight: 700, color: isR ? "#34D399" : (ut?.c || "#fff") }}>৳{bn ? FM(p.amount) : FE(p.amount)}</span>
               </div>;
             })}
           </div>;
         })()}
 
-        <div style={{ display: "flex", gap: 8 }}>
+        {/* Rent History (Feature #3) */}
+        {edit.rentHistory?.length > 1 && <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#A78BFA", marginBottom: 6 }}>📋 {bn ? "ভাড়ার ইতিহাস" : "Rent History"}</div>
+          {edit.rentHistory.slice().reverse().map((h, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "3px 0", color: "#64748B" }}>
+            <span>{h.date?.split("T")[0]} — {h.reason}</span>
+            <span style={{ fontWeight: 700 }}>{h.prevRent ? `৳${h.prevRent} →` : ""} ৳{h.rent}</span>
+          </div>)}
+        </div>}
+
+        <div style={{ display: "flex", gap: 6 }}>
           <button className="btn bp" style={{ flex: 1 }} onClick={() => setModal("pay")}>💰 {bn ? "আদায়" : "Collect"}</button>
-          <button className="btn bd" style={{ flex: 1 }} onClick={() => { if (confirm(bn ? "নিশ্চিত?" : "Sure?")) { unassignTenant(edit.id); setModal(null); } }}>🗑️ {bn ? "সরান" : "Remove"}</button>
+          <button className="btn bg" style={{ flex: 1 }} onClick={() => {
+            const nr = prompt(bn ? "নতুন ভাড়া:" : "New rent:", edit.rent);
+            if (nr && Number(nr) !== edit.rent) {
+              const reason = prompt(bn ? "কারণ:" : "Reason:", bn ? "বার্ষিক বৃদ্ধি" : "Annual increase");
+              if (reason !== null) onRentChange(edit.id, Number(nr), reason);
+            }
+          }}>📝 {bn ? "ভাড়া বদল" : "Change Rent"}</button>
+          <button className="btn bd" style={{ flex: 0 }} onClick={() => { if (confirm(bn ? "নিশ্চিত?" : "Sure?")) { unassignTenant(edit.id); setModal(null); } }}>🗑️</button>
         </div>
       </div>
     </div>}
@@ -1248,9 +1575,13 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (info, unitId, rent) => { await manualAddTenant(info, unitId, rent); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "llNotice" && <LandlordNoticeModal bn={bn} tenants={tenants.filter(t => t.unitId)} units={units} properties={properties} fromId={me?.id}
       onSave={async (notices) => { for (const n of notices) await onSendNotice(n); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal === "addExpense" && <AddExpenseModal bn={bn} properties={properties}
+      onSave={async (d) => { await onAddExpense(d); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal === "addAgreement" && <AddAgreementModal bn={bn} tenants={tenants.filter(t => t.unitId)} units={units} properties={properties} landlordId={me?.id}
+      onSave={async (d) => { await onCreateAgreement(d); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
-function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus }) {
+function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, agreements }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("home");
   const [selPay, setSelPay] = useState(null);
@@ -1283,6 +1614,7 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
     { k: "home", l: bn ? "হোম" : "Home", i: "🏠" },
     { k: "bills", l: bn ? "বিল" : "Bills", i: "📄" },
     { k: "history", l: bn ? "ইতিহাস" : "History", i: "📋" },
+    { k: "agreement", l: bn ? "চুক্তি" : "Agreement", i: "📜" },
     { k: "notices", l: bn ? "নোটিশ" : "Notices", i: "📨" },
   ];
 
@@ -1418,6 +1750,50 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
                 </div>;
               })}
             </div>}
+        </>}
+
+        {/* ═══ AGREEMENT TAB (Tenant view) ═══ */}
+        {tab === "agreement" && <>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>📜 {bn ? "চুক্তিপত্র" : "Agreements"}</h3>
+          {(!agreements || agreements.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>📜</div>
+            {bn ? "কোনো চুক্তি নেই" : "No agreements yet"}
+          </div> :
+            agreements.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).map(a => <div key={a.id} className="G" style={{ padding: 16, marginBottom: 10, borderLeft: `3px solid ${a.status === "active" ? "#10B981" : "#475569"}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>📜 {bn ? "ভাড়া চুক্তি" : "Rental Agreement"}</span>
+                <span className="badge" style={{ background: a.status === "active" ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.04)", color: a.status === "active" ? "#34D399" : "#475569" }}>
+                  {a.status === "active" ? (bn ? "✅ সক্রিয়" : "✅ Active") : (bn ? "বাতিল" : "Ended")}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                {[{ l: bn ? "মাসিক ভাড়া" : "Monthly Rent", v: `৳${bn ? FM(a.rent) : FE(a.rent)}`, c: "#34D399" },
+                  { l: bn ? "অগ্রিম" : "Advance", v: `৳${bn ? FM(a.advance || 0) : FE(a.advance || 0)}` },
+                  { l: bn ? "শুরুর তারিখ" : "Start Date", v: a.startDate || "—" },
+                  { l: bn ? "মেয়াদ" : "Duration", v: a.duration ? `${a.duration} ${bn ? "মাস" : "months"}` : "—" },
+                ].map((it, i) => <div key={i} style={{ padding: "8px 12px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{it.l}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: it.c || "#E2E8F0" }}>{it.v}</div>
+                </div>)}
+              </div>
+              {a.terms && <div style={{ padding: 12, background: "rgba(255,255,255,.01)", borderRadius: 8, fontSize: 12, color: "#94A3B8", lineHeight: 1.6, borderLeft: "2px solid rgba(255,255,255,.05)" }}>📝 {a.terms}</div>}
+              {a.conditions && <div style={{ padding: 12, background: "rgba(255,255,255,.01)", borderRadius: 8, fontSize: 12, color: "#94A3B8", lineHeight: 1.6, marginTop: 6, borderLeft: "2px solid rgba(255,255,255,.05)" }}>⚖️ {a.conditions}</div>}
+            </div>)}
+
+          {/* Rent History */}
+          {me?.rentHistory?.length > 0 && <div className="G" style={{ padding: 16, marginTop: 10 }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: "#A78BFA", marginBottom: 10 }}>📋 {bn ? "ভাড়ার ইতিহাস" : "Rent History"}</h4>
+            {me.rentHistory.slice().reverse().map((h, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.02)" }}>
+              <div>
+                <span style={{ color: "#64748B" }}>{h.date?.split("T")[0]}</span>
+                <span style={{ color: "#475569", marginLeft: 8 }}>({h.reason})</span>
+              </div>
+              <div style={{ fontWeight: 700 }}>
+                {h.prevRent ? <span style={{ color: "#F59E0B", textDecoration: "line-through", marginRight: 6 }}>৳{h.prevRent}</span> : null}
+                <span style={{ color: "#34D399" }}>৳{h.rent}</span>
+              </div>
+            </div>)}
+          </div>}
         </>}
 
         {/* ═══ NOTICES TAB ═══ */}
@@ -1890,3 +2266,101 @@ function LandlordNoticeModal({ bn, tenants, units, properties, fromId, onSave, o
     </div>
   </div></div>;
 }
+
+// ═══ ADD EXPENSE MODAL ═══
+function AddExpenseModal({ bn, properties, onSave, onClose }) {
+  const [f, sF] = useState({ category: "repair", amount: "", description: "", date: new Date().toISOString().split("T")[0], propertyId: "", propertyName: "" });
+  const [busy, setBusy] = useState(false);
+  const CATS = [
+    { k: "repair", l: bn ? "🔧 মেরামত" : "🔧 Repair", c: "#F97316" },
+    { k: "paint", l: bn ? "🎨 রং" : "🎨 Paint", c: "#EC4899" },
+    { k: "plumbing", l: bn ? "🚿 প্লাম্বিং" : "🚿 Plumbing", c: "#38BDF8" },
+    { k: "electric", l: bn ? "⚡ ইলেক্ট্রিক" : "⚡ Electric", c: "#FBBF24" },
+    { k: "cleaning", l: bn ? "🧹 পরিষ্কার" : "🧹 Cleaning", c: "#34D399" },
+    { k: "tax", l: bn ? "🏛️ কর/ফি" : "🏛️ Tax", c: "#A78BFA" },
+    { k: "other", l: bn ? "📦 অন্যান্য" : "📦 Other", c: "#94A3B8" },
+  ];
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 14 }}>🧾 {bn ? "খরচ যোগ" : "Add Expense"}</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div><label className="lbl">{bn ? "ক্যাটাগরি" : "Category"}</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {CATS.map(c => <span key={c.k} onClick={() => sF({ ...f, category: c.k })} style={{ padding: "5px 10px", borderRadius: 20, fontSize: 10, fontWeight: 600, cursor: "pointer", background: f.category === c.k ? `${c.c}15` : "rgba(255,255,255,.03)", color: f.category === c.k ? c.c : "#64748B", border: `1px solid ${f.category === c.k ? `${c.c}30` : "rgba(255,255,255,.04)"}` }}>{c.l}</span>)}
+        </div>
+      </div>
+      <div><label className="lbl">{bn ? "পরিমাণ (৳)" : "Amount (৳)"}</label>
+        <input className="inp" type="number" value={f.amount} onChange={e => sF({ ...f, amount: e.target.value })} placeholder="5000" /></div>
+      <div><label className="lbl">{bn ? "বিবরণ" : "Description"}</label>
+        <input className="inp" value={f.description} onChange={e => sF({ ...f, description: e.target.value })} placeholder={bn ? "কী খরচ..." : "What expense..."} /></div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><label className="lbl">{bn ? "তারিখ" : "Date"}</label>
+          <input className="inp" type="date" value={f.date} onChange={e => sF({ ...f, date: e.target.value })} /></div>
+        <div><label className="lbl">{bn ? "বাড়ি" : "Property"}</label>
+          <select className="inp" value={f.propertyId} onChange={e => { const p = properties.find(x => x.id === e.target.value); sF({ ...f, propertyId: e.target.value, propertyName: p?.name || "" }); }}>
+            <option value="">{bn ? "— সব —" : "— All —"}</option>
+            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></div>
+      </div>
+    </div>
+    <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+      <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
+      <button className="btn bp" style={{ flex: 1 }} disabled={busy} onClick={async () => {
+        if (!f.amount) { alert(bn ? "পরিমাণ লিখুন" : "Enter amount"); return; }
+        setBusy(true); await onSave({ ...f, amount: Number(f.amount) }); setBusy(false);
+      }}>💾 {busy ? "⏳" : (bn ? "সংরক্ষণ" : "Save")}</button>
+    </div>
+  </div></div>;
+}
+
+// ═══ ADD AGREEMENT MODAL ═══
+function AddAgreementModal({ bn, tenants, units, properties, landlordId, onSave, onClose }) {
+  const [tid, setTid] = useState("");
+  const [f, sF] = useState({ rent: "", advance: "", startDate: new Date().toISOString().split("T")[0], duration: "12", terms: "", conditions: "" });
+  const [busy, setBusy] = useState(false);
+  const sel = tenants.find(t => t.id === tid);
+  const selU = sel ? units.find(u => u.id === sel.unitId) : null;
+  const selP = selU ? properties.find(p => p.id === selU.propertyId) : null;
+
+  const TERMS = bn
+    ? ["ভাড়া প্রতি মাসের ১-৫ তারিখে পরিশোধযোগ্য", "৩ মাসের নোটিশ ছাড়া বাতিল নয়", "ক্ষতি হলে ভাড়াটিয়া দায়ী", "পোষা প্রাণী নিষেধ", "সাব-লেট নিষেধ"]
+    : ["Rent due 1st-5th monthly", "3 months notice for termination", "Tenant liable for damages", "No pets", "No subletting"];
+
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📜 {bn ? "নতুন চুক্তিপত্র" : "New Agreement"}</h2>
+    <p style={{ fontSize: 11, color: "#475569", marginBottom: 14 }}>{bn ? "ভাড়াটিয়ার সাথে চুক্তি তৈরি করুন" : "Create rental agreement"}</p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div><label className="lbl">{bn ? "ভাড়াটিয়া" : "Tenant"}</label>
+        <select className="inp" value={tid} onChange={e => { const t = tenants.find(x => x.id === e.target.value); setTid(e.target.value); if (t) sF({ ...f, rent: String(t.rent || ""), advance: String(t.advance || "") }); }}>
+          <option value="">{bn ? "— নির্বাচন —" : "— Select —"}</option>
+          {tenants.map(t => { const u = units.find(x => x.id === t.unitId); return <option key={t.id} value={t.id}>{t.name} ({u?.unitNo || "—"})</option>; })}
+        </select></div>
+      {sel && <div style={{ padding: 8, borderRadius: 8, background: "rgba(255,255,255,.02)", fontSize: 10, color: "#64748B" }}>👤 {sel.name} • 📞 {sel.phone} • 🏠 {selP?.name} › {selU?.unitNo}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><label className="lbl">{bn ? "ভাড়া (৳)" : "Rent (৳)"}</label><input className="inp" type="number" value={f.rent} onChange={e => sF({ ...f, rent: e.target.value })} /></div>
+        <div><label className="lbl">{bn ? "অগ্রিম (৳)" : "Advance"}</label><input className="inp" type="number" value={f.advance} onChange={e => sF({ ...f, advance: e.target.value })} /></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><label className="lbl">{bn ? "শুরু" : "Start"}</label><input className="inp" type="date" value={f.startDate} onChange={e => sF({ ...f, startDate: e.target.value })} /></div>
+        <div><label className="lbl">{bn ? "মেয়াদ (মাস)" : "Months"}</label><input className="inp" type="number" value={f.duration} onChange={e => sF({ ...f, duration: e.target.value })} /></div>
+      </div>
+      <div><label className="lbl">{bn ? "শর্তাবলী" : "Terms"}</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+          {TERMS.map((t, i) => <span key={i} onClick={() => sF({ ...f, terms: f.terms ? f.terms + "\n• " + t : "• " + t })} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 9, cursor: "pointer", background: "rgba(255,255,255,.03)", color: "#64748B", border: "1px solid rgba(255,255,255,.04)" }}>+ {t.slice(0, 25)}...</span>)}
+        </div>
+        <textarea className="inp" style={{ minHeight: 50, fontSize: 11 }} value={f.terms} onChange={e => sF({ ...f, terms: e.target.value })} /></div>
+      <div><label className="lbl">{bn ? "বিশেষ শর্ত" : "Conditions"}</label>
+        <textarea className="inp" style={{ minHeight: 36, fontSize: 11 }} value={f.conditions} onChange={e => sF({ ...f, conditions: e.target.value })} /></div>
+    </div>
+    <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+      <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
+      <button className="btn bp" style={{ flex: 1 }} disabled={busy} onClick={async () => {
+        if (!tid || !f.rent) { alert(bn ? "ভাড়াটিয়া ও ভাড়া দিন" : "Select tenant & rent"); return; }
+        setBusy(true);
+        await onSave({ landlordId, tenantId: tid, tenantName: sel?.name, tenantPhone: sel?.phone, unitId: sel?.unitId, propertyId: selU?.propertyId, propertyName: selP?.name, unitNo: selU?.unitNo, rent: Number(f.rent), advance: Number(f.advance || 0), startDate: f.startDate, duration: Number(f.duration || 12), terms: f.terms, conditions: f.conditions, status: "active" });
+        setBusy(false);
+      }}>📜 {busy ? "⏳" : (bn ? "চুক্তি তৈরি" : "Create")}</button>
+    </div>
+  </div></div>;
+}
+
+// ═══ EOF ═══
