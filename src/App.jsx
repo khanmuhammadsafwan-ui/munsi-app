@@ -160,20 +160,33 @@ export default function App() {
     } catch (e) { notify("❌ " + e.message); }
   };
 
-  // ─── REGISTER AS TENANT ───
-  const regTenant = async (info, inviteCode) => {
+  // ─── REGISTER AS TENANT (self-select unit) ───
+  const regTenant = async (info, landlordId, unitId, unitRent) => {
     try {
-      const ll = await DB.getLandlordByInvite(inviteCode);
-      if (!ll) { notify(bn ? "❌ ভুল ইনভাইট কোড!" : "❌ Invalid invite code!"); return false; }
-      const t = await DB.registerTenant(user.uid, { ...info, email: user.email || info.email }, ll.id);
-      setMyTenant(t);
-      setMyLandlord(ll);
+      if (unitId) {
+        const t = await DB.selfRegisterTenant(user.uid, { ...info, email: user.email || info.email }, landlordId, unitId, unitRent);
+        setMyTenant(t);
+      } else {
+        const t = await DB.registerTenant(user.uid, { ...info, email: user.email || info.email }, landlordId);
+        setMyTenant(t);
+      }
+      const llFull = await DB.getLandlord(landlordId);
+      setMyLandlord(llFull);
       setProfile({ role: "tenant" });
       setScreen("tenant");
       await loadTenantData(user.uid);
       notify(bn ? "✓ ভাড়াটিয়া নিবন্ধন সফল!" : "✓ Tenant registered!");
       return true;
     } catch (e) { notify("❌ " + e.message); return false; }
+  };
+
+  // ─── MANUAL ADD TENANT (by landlord) ───
+  const manualAddTenant = async (info, unitId, rent) => {
+    try {
+      await DB.addManualTenant(user.uid, info, unitId, rent);
+      await loadLandlordData(user.uid);
+      notify(bn ? "✓ ভাড়াটিয়া যোগ হয়েছে" : "✓ Tenant added");
+    } catch (e) { notify("❌ " + e.message); }
   };
 
   // ─── ADMIN LOGIN ───
@@ -246,7 +259,8 @@ export default function App() {
         <LandlordPanel me={myLandlord} tenants={tenants} properties={properties} units={units} payments={payments}
           bn={bn} lang={lang} setLang={setLang} onLogout={handleLogout}
           addProperty={handleAddProperty} assignTenant={handleAssign} unassignTenant={handleUnassign}
-          recordPayment={handlePayment} selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={() => loadLandlordData(user.uid)} />
+          recordPayment={handlePayment} manualAddTenant={manualAddTenant}
+          selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={() => loadLandlordData(user.uid)} />
       )}
 
       {screen === "tenant" && profile?.role === "tenant" && (
@@ -454,24 +468,206 @@ function RegLandlord({ bn, user, onReg, onBack }) {
   </div>;
 }
 
-// ═══ REGISTER TENANT ═══
+// ═══ REGISTER TENANT (Multi-step: Phone Search → Browse → Select → Register) ═══
 function RegTenant({ bn, user, onReg, onBack }) {
+  const [step, setStep] = useState(1); // 1=search, 2=browse, 3=confirm
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [landlord, setLandlord] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searched, setSearched] = useState(false);
+  const [properties, setProperties] = useState([]);
+  const [units, setUnits] = useState([]);
+  const [selProp, setSelProp] = useState(null);
+  const [selUnit, setSelUnit] = useState(null);
   const [f, sF] = useState({ name: user?.displayName || "", phone: "", email: user?.email || "", nid: "", photo: user?.photoURL || "", members: 1 });
-  const [code, setCode] = useState("");
   const set = (k, v) => sF(o => ({ ...o, [k]: v }));
 
-  return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#060B16" }}>
-    <div style={{ width: "100%", maxWidth: 500, animation: "fadeIn .4s" }}>
-      <button className="btn bg bs" onClick={onBack} style={{ marginBottom: 12 }}>← {bn ? "পিছনে" : "Back"}</button>
-      <div className="G2" style={{ padding: 28 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 4 }}>👤 {bn ? "ভাড়াটিয়া তথ্য" : "Tenant Info"}</h2>
-        <p style={{ fontSize: 12, color: "#64748B", textAlign: "center", marginBottom: 16 }}>{bn ? "বাড়িওয়ালার ইনভাইট কোড দিন" : "Enter landlord invite code"}</p>
+  // Step 1: Search landlord by phone
+  const searchLandlord = async () => {
+    if (!phone || phone.length < 5) return;
+    setBusy(true);
+    setSearched(true);
+    try {
+      const results = await DB.searchLandlordsByPhone(phone);
+      setSearchResults(results);
+      // If exact match, auto-select
+      if (results.length === 1) {
+        selectLandlord(results[0]);
+      }
+    } catch (e) { alert("❌ " + e.message); }
+    setBusy(false);
+  };
 
-        <div style={{ marginBottom: 16 }}>
-          <label className="lbl" style={{ color: "#34D399" }}>🔗 {bn ? "ইনভাইট কোড" : "Invite Code"} *</label>
-          <input className="inp" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="MN-XXXX"
-            style={{ textAlign: "center", fontSize: 22, fontWeight: 800, letterSpacing: 3, fontFamily: "monospace", borderColor: "rgba(16,185,129,.2)" }} />
+  // Select a landlord and load properties
+  const selectLandlord = async (ll) => {
+    setBusy(true);
+    setLandlord(ll);
+    try {
+      const props = await DB.getPropertiesByLandlord(ll.id);
+      setProperties(props);
+      const allUnits = await DB.getUnitsByLandlord(ll.id);
+      setUnits(allUnits);
+      setStep(2);
+    } catch (e) { alert("❌ " + e.message); }
+    setBusy(false);
+  };
+
+  // Step 3: Final registration
+  const handleRegister = async () => {
+    if (!f.name) { alert(bn ? "নাম দিন" : "Enter name"); return; }
+    setBusy(true);
+    await onReg(f, landlord.id, selUnit?.id, selUnit?.rent);
+    setBusy(false);
+  };
+
+  const prop = selProp ? properties.find(p => p.id === selProp) : null;
+  const propUnits = selProp ? units.filter(u => u.propertyId === selProp) : [];
+  const vacantUnits = propUnits.filter(u => u.isVacant);
+  const floors = prop ? [...new Set(propUnits.map(u => u.floor))].sort((a, b) => a - b) : [];
+
+  return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#060B16" }}>
+    <div style={{ width: "100%", maxWidth: 600, animation: "fadeIn .4s" }}>
+      <button className="btn bg bs" onClick={step === 1 ? onBack : step === 3 ? () => setStep(2) : () => { setSelProp(null); setSelUnit(null); setStep(step > 1 ? step - 1 : 1); }} style={{ marginBottom: 12 }}>← {bn ? "পিছনে" : "Back"}</button>
+
+      {/* STEP INDICATOR */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, justifyContent: "center" }}>
+        {[1,2,3].map(s => <div key={s} style={{ width: s === step ? 30 : 10, height: 4, borderRadius: 2, background: s <= step ? "#34D399" : "rgba(255,255,255,.06)", transition: "all .3s" }} />)}
+      </div>
+
+      {/* ── STEP 1: SEARCH BY PHONE ── */}
+      {step === 1 && <div className="G2" style={{ padding: 28 }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>📞</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{bn ? "বাড়িওয়ালা খুঁজুন" : "Find Your Landlord"}</h2>
+          <p style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>{bn ? "বাড়িওয়ালার মোবাইল নম্বর দিয়ে সার্চ করুন" : "Search by landlord's phone number"}</p>
         </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="inp" value={phone} onChange={e => setPhone(e.target.value)} placeholder={bn ? "01XXXXXXXXX" : "01XXXXXXXXX"}
+            style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1, fontFamily: "monospace", flex: 1 }}
+            onKeyDown={e => e.key === "Enter" && searchLandlord()} />
+          <button className="btn bp" style={{ padding: "12px 20px", fontSize: 15 }} onClick={searchLandlord} disabled={busy}>
+            {busy ? "⏳" : "🔍"}
+          </button>
+        </div>
+
+        {/* Search Results */}
+        {searched && !busy && searchResults.length === 0 && <div style={{ marginTop: 16, padding: 16, borderRadius: 12, background: "rgba(239,68,68,.05)", border: "1px solid rgba(239,68,68,.1)", textAlign: "center" }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>😔</div>
+          <div style={{ color: "#EF4444", fontWeight: 600, fontSize: 13 }}>{bn ? "এই নম্বরে কোনো বাড়িওয়ালা পাওয়া যায়নি" : "No landlord found with this number"}</div>
+          <div style={{ color: "#475569", fontSize: 11, marginTop: 4 }}>{bn ? "নম্বর ঠিক আছে কিনা যাচাই করুন" : "Please verify the number"}</div>
+        </div>}
+
+        {searchResults.length > 1 && <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#94A3B8", marginBottom: 8 }}>{bn ? "বাড়িওয়ালা পাওয়া গেছে:" : "Landlords found:"}</div>
+          {searchResults.map(ll => <div key={ll.id} className="G CH" style={{ padding: 16, marginBottom: 8 }} onClick={() => selectLandlord(ll)}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div className="av" style={{ background: "rgba(16,185,129,.08)", borderColor: "rgba(16,185,129,.15)" }}>🏠</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{ll.name}</div>
+                <div style={{ fontSize: 11, color: "#64748B" }}>📞 {ll.phone} • 📍 {ll.location || ll.address}</div>
+              </div>
+              <div style={{ color: "#34D399", fontSize: 18 }}>→</div>
+            </div>
+          </div>)}
+        </div>}
+      </div>}
+
+      {/* ── STEP 2: BROWSE PROPERTIES & UNITS ── */}
+      {step === 2 && <div>
+        {/* Landlord profile card */}
+        <div style={{ background: "linear-gradient(135deg,rgba(16,185,129,.08),rgba(59,130,246,.06))", border: "1px solid rgba(16,185,129,.15)", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(16,185,129,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🏠</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, color: "#fff", fontSize: 18 }}>{landlord?.name}</div>
+              <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>📞 {landlord?.phone}</div>
+              <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>📍 {landlord?.location || landlord?.address}</div>
+            </div>
+            <span className="badge bA">✓ {bn ? "যাচাইকৃত" : "Verified"}</span>
+          </div>
+        </div>
+
+        {!selProp ? <>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{bn ? "🏘️ বাড়ি বাছাই করুন" : "🏘️ Select Property"}</h3>
+          {properties.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🏗️</div>
+            {bn ? "এই বাড়িওয়ালার কোনো বাড়ি এখনো যোগ করা হয়নি" : "No properties listed yet"}
+          </div> :
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="rg">
+            {properties.map(p => {
+              const pu = units.filter(u => u.propertyId === p.id);
+              const vac = pu.filter(u => u.isVacant).length;
+              return <div key={p.id} className="G CH" style={{ padding: 18, position: "relative", overflow: "hidden", opacity: vac === 0 ? .4 : 1 }} onClick={() => vac > 0 && setSelProp(p.id)}>
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${p.color || "#10B981"},transparent)` }} />
+                <div style={{ fontWeight: 700, fontSize: 15, color: "#fff", marginBottom: 2 }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>📍 {p.address}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span className="badge bV">{vac} {bn ? "খালি" : "vacant"}</span>
+                  <span className="badge" style={{ background: "rgba(255,255,255,.04)", color: "#64748B" }}>{pu.length} {bn ? "ইউনিট" : "units"}</span>
+                </div>
+                {vac === 0 && <div style={{ fontSize: 10, color: "#EF4444", marginTop: 6 }}>{bn ? "কোনো ইউনিট খালি নেই" : "No vacancies"}</div>}
+              </div>;
+            })}
+          </div>}
+        </> : <>
+          {/* Property selected — show vacant units */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", marginBottom: 14 }}>
+            <span style={{ cursor: "pointer", color: "#34D399" }} onClick={() => setSelProp(null)}>🏘️ {bn ? "সব বাড়ি" : "All"}</span>
+            <span style={{ opacity: .3 }}>›</span>
+            <span style={{ color: "#E2E8F0" }}>{prop?.name}</span>
+          </div>
+
+          {prop?.address && <div style={{ fontSize: 11, color: "#475569", marginBottom: 12 }}>📍 {prop.address}</div>}
+
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{bn ? "🚪 খালি ইউনিট বাছাই করুন" : "🚪 Choose a vacant unit"}</h3>
+
+          {vacantUnits.length === 0 ? <div className="G2" style={{ padding: 30, textAlign: "center", color: "#475569" }}>{bn ? "কোনো খালি ইউনিট নেই" : "No vacant units"}</div> :
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {floors.map(fl => {
+              const flUnits = propUnits.filter(u => u.floor === fl && u.isVacant);
+              if (flUnits.length === 0) return null;
+              return <div key={fl}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 6 }}>{bn ? `${fl} তলা` : `Floor ${fl}`}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+                  {flUnits.map(u => <div key={u.id} className="G CH" onClick={() => { setSelUnit(u); setStep(3); }}
+                    style={{ padding: 14, borderRadius: 14, textAlign: "center", border: "1px solid rgba(59,130,246,.1)", background: "rgba(59,130,246,.02)" }}>
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>🚪</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{u.unitNo}</div>
+                    <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>{u.type === "flat" ? (bn ? "ফ্ল্যাট" : "Flat") : (bn ? "রুম" : "Room")}</div>
+                    {u.rent > 0 && <div style={{ fontWeight: 800, color: "#34D399", fontSize: 14, marginTop: 6 }}>৳{bn ? FM(u.rent) : FE(u.rent)}<span style={{ fontSize: 9, color: "#475569" }}>/{bn ? "মাস" : "mo"}</span></div>}
+                    {u.bedrooms > 0 && <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>🛏️ {u.bedrooms} 🚿 {u.bathrooms || 0}</div>}
+                    {u.conditions && <div style={{ fontSize: 9, color: "#94A3B8", marginTop: 4, padding: "3px 6px", background: "rgba(255,255,255,.02)", borderRadius: 6 }}>📋 {u.conditions.slice(0, 40)}{u.conditions.length > 40 ? "..." : ""}</div>}
+                  </div>)}
+                </div>
+              </div>;
+            })}
+          </div>}
+        </>}
+      </div>}
+
+      {/* ── STEP 3: CONFIRM & FILL INFO ── */}
+      {step === 3 && selUnit && <div className="G2" style={{ padding: 28 }}>
+        {/* Selected unit summary */}
+        <div style={{ background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.15)", borderRadius: 14, padding: 16, marginBottom: 20, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "#34D399", fontWeight: 700 }}>{bn ? "আপনার নির্বাচিত ইউনিট" : "Your Selected Unit"}</div>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 8 }}>
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#fff" }}>{selUnit.unitNo}</div>
+              <div style={{ fontSize: 11, color: "#64748B" }}>{prop?.name} • {bn ? `${selUnit.floor} তলা` : `Floor ${selUnit.floor}`}</div>
+            </div>
+            {selUnit.rent > 0 && <div style={{ borderLeft: "1px solid rgba(255,255,255,.06)", paddingLeft: 16 }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#34D399" }}>৳{bn ? FM(selUnit.rent) : FE(selUnit.rent)}</div>
+              <div style={{ fontSize: 10, color: "#475569" }}>/{bn ? "মাস" : "month"}</div>
+            </div>}
+          </div>
+          {selUnit.conditions && <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(255,255,255,.03)", borderRadius: 8, fontSize: 11, color: "#94A3B8", textAlign: "left" }}>
+            📋 <strong>{bn ? "শর্ত:" : "Terms:"}</strong> {selUnit.conditions}
+          </div>}
+        </div>
+
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff", textAlign: "center", marginBottom: 14 }}>👤 {bn ? "আপনার তথ্য দিন" : "Your Information"}</h3>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div><label className="lbl">{bn ? "নাম" : "Name"} *</label><input className="inp" value={f.name} onChange={e => set("name", e.target.value)} /></div>
@@ -479,12 +675,15 @@ function RegTenant({ bn, user, onReg, onBack }) {
             <div><label className="lbl">{bn ? "ফোন" : "Phone"}</label><input className="inp" value={f.phone} onChange={e => set("phone", e.target.value)} placeholder="01XXXXXXXXX" /></div>
             <div><label className="lbl">NID</label><input className="inp" value={f.nid} onChange={e => set("nid", e.target.value)} /></div>
           </div>
-          <button className="btn bp" style={{ width: "100%", padding: 14, marginTop: 6, fontSize: 15 }}
-            onClick={() => { if (f.name && code) onReg(f, code); else alert(bn ? "নাম ও ইনভাইট কোড দিন" : "Name & invite code required"); }}>
-            {bn ? "নিবন্ধন করুন" : "Register"} →
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div><label className="lbl">{bn ? "পরিবারের সদস্য" : "Family Members"}</label><input className="inp" type="number" min="1" value={f.members} onChange={e => set("members", Number(e.target.value))} /></div>
+            <div><label className="lbl">{bn ? "ইমেইল" : "Email"}</label><input className="inp" value={f.email} onChange={e => set("email", e.target.value)} /></div>
+          </div>
+          <button className="btn bp" style={{ width: "100%", padding: 14, marginTop: 8, fontSize: 15 }} onClick={handleRegister} disabled={busy}>
+            {busy ? "⏳ ..." : (bn ? "✓ নিবন্ধন করুন" : "✓ Register")}
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   </div>;
 }
@@ -614,7 +813,7 @@ function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setS
 }
 
 // ═══ LANDLORD PANEL ═══
-function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [selProp, setSelProp] = useState(null);
   const [selFloor, setSelFloor] = useState(null);
@@ -666,7 +865,10 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       {!selProp && <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700 }}>🏘️ {bn ? "বাড়িসমূহ" : "Properties"}</h3>
-          <button className="btn bp bs" onClick={() => setModal("addProp")}>➕ {bn ? "বাড়ি যোগ" : "Add"}</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn bg bs" onClick={() => setModal("manualTenant")}>👤➕ {bn ? "ভাড়াটিয়া যোগ" : "Add Tenant"}</button>
+            <button className="btn bp bs" onClick={() => setModal("addProp")}>🏘️➕ {bn ? "বাড়ি যোগ" : "Add"}</button>
+          </div>
         </div>
         {properties.length === 0 ? <div className="G2" style={{ padding: 50, textAlign: "center" }}>
           <div style={{ fontSize: 44, marginBottom: 8 }}>🏘️</div>
@@ -758,10 +960,10 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
         </div>
       </div>
     </div>}
+    {modal === "manualTenant" && <ManualAddTenantModal bn={bn} units={units.filter(u => u.isVacant)} properties={properties}
+      onSave={async (info, unitId, rent) => { await manualAddTenant(info, unitId, rent); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
-
-// ═══ TENANT PANEL ═══
 function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk }) {
   const [modal, setModal] = useState(null);
   const unit = me?.unitId ? units.find(u => u.id === me.unitId) : null;
@@ -830,7 +1032,7 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
 // ═══ MODALS ═══
 function AddPropModal({ bn, onSave, onClose }) {
-  const [f, sF] = useState({ name: "", address: "", location: "", floors: 5, unitsPerFloor: 4, unitType: "flat", color: "#10B981" });
+  const [f, sF] = useState({ name: "", address: "", location: "", floors: 5, unitsPerFloor: 4, unitType: "flat", color: "#10B981", defaultRent: "", defaultConditions: "", defaultBedrooms: "", defaultBathrooms: "" });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => sF(o => ({ ...o, [k]: v }));
   const cols = ["#10B981", "#6366F1", "#F97316", "#EAB308", "#06B6D4", "#EC4899", "#3B82F6"];
@@ -852,11 +1054,81 @@ function AddPropModal({ bn, onSave, onClose }) {
           <option value="flat">{bn ? "ফ্ল্যাট" : "Flat"}</option><option value="room">{bn ? "রুম" : "Room"}</option>
         </select></div>
       </div>
+
+      {/* Rent & Details */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,.04)", paddingTop: 10, marginTop: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#34D399", marginBottom: 8 }}>💰 {bn ? "ভাড়া ও তথ্য (সব ইউনিটে প্রযোজ্য)" : "Rent & Details (applies to all units)"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div><label className="lbl">{bn ? "ভাড়া ৳/মাস" : "Rent ৳/mo"}</label><input className="inp" type="number" value={f.defaultRent} onChange={e => set("defaultRent", e.target.value)} placeholder="0" /></div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <div><label className="lbl">🛏️</label><input className="inp" type="number" value={f.defaultBedrooms} onChange={e => set("defaultBedrooms", e.target.value)} placeholder="0" /></div>
+            <div><label className="lbl">🚿</label><input className="inp" type="number" value={f.defaultBathrooms} onChange={e => set("defaultBathrooms", e.target.value)} placeholder="0" /></div>
+          </div>
+        </div>
+        <div style={{ marginTop: 8 }}><label className="lbl">📋 {bn ? "শর্ত / চুক্তি" : "Conditions"}</label><textarea className="inp" value={f.defaultConditions} onChange={e => set("defaultConditions", e.target.value)} placeholder={bn ? "যেমন: অগ্রিম ২ মাসের, পোষা প্রাণী নিষেধ..." : "e.g. 2 months advance, no pets..."} /></div>
+      </div>
+
       <div><label className="lbl">{bn ? "রং" : "Color"}</label><div style={{ display: "flex", gap: 6 }}>
         {cols.map(c => <div key={c} onClick={() => set("color", c)} style={{ width: 24, height: 24, borderRadius: 6, background: c, cursor: "pointer", border: f.color === c ? "3px solid #fff" : "3px solid transparent" }} />)}
       </div></div>
     </div>
     <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+      <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
+      <button className="btn bp" style={{ flex: 1 }} onClick={handleSave} disabled={busy}>{busy ? "⏳..." : (bn ? "যোগ করুন" : "Add")}</button>
+    </div>
+  </div></div>;
+}
+
+function ManualAddTenantModal({ bn, units, properties, onSave, onClose }) {
+  const [f, sF] = useState({ name: "", phone: "", email: "", nid: "", members: 1, advance: "", moveInDate: new Date().toISOString().split("T")[0], notes: "" });
+  const [unitId, setUnitId] = useState("");
+  const [rent, setRent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => sF(o => ({ ...o, [k]: v }));
+
+  const selUnit = units.find(u => u.id === unitId);
+  const getPropName = (u) => { const p = properties.find(p => p.id === u.propertyId); return p ? p.name : ""; };
+
+  // Auto-fill rent when unit selected
+  const handleUnitChange = (id) => {
+    setUnitId(id);
+    const u = units.find(x => x.id === id);
+    if (u?.rent) setRent(String(u.rent));
+  };
+
+  const handleSave = async () => {
+    if (!f.name || busy) return;
+    setBusy(true);
+    try { await onSave(f, unitId || null, rent); } catch(e) { console.error(e); } finally { setBusy(false); }
+  };
+
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>👤➕ {bn ? "ম্যানুয়ালি ভাড়াটিয়া যোগ" : "Add Tenant Manually"}</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div><label className="lbl">{bn ? "নাম" : "Name"} *</label><input className="inp" value={f.name} onChange={e => set("name", e.target.value)} /></div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><label className="lbl">{bn ? "ফোন" : "Phone"}</label><input className="inp" value={f.phone} onChange={e => set("phone", e.target.value)} placeholder="01XXXXXXXXX" /></div>
+        <div><label className="lbl">NID</label><input className="inp" value={f.nid} onChange={e => set("nid", e.target.value)} /></div>
+      </div>
+
+      {/* Unit selection */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,.04)", paddingTop: 10 }}>
+        <label className="lbl">🚪 {bn ? "ইউনিট নির্বাচন" : "Select Unit"}</label>
+        <select className="inp" value={unitId} onChange={e => handleUnitChange(e.target.value)}>
+          <option value="">— {bn ? "ইউনিট ছাড়াই যোগ করুন" : "Add without unit"} —</option>
+          {units.map(u => <option key={u.id} value={u.id}>{getPropName(u)} › {u.unitNo} ({bn ? `${u.floor} তলা` : `Floor ${u.floor}`}){u.rent ? ` — ৳${u.rent}` : ""}</option>)}
+        </select>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        <div><label className="lbl">{bn ? "ভাড়া ৳" : "Rent ৳"}</label><input className="inp" type="number" value={rent} onChange={e => setRent(e.target.value)} /></div>
+        <div><label className="lbl">{bn ? "অগ্রিম ৳" : "Advance ৳"}</label><input className="inp" type="number" value={f.advance} onChange={e => set("advance", e.target.value)} /></div>
+        <div><label className="lbl">{bn ? "সদস্য" : "Members"}</label><input className="inp" type="number" min="1" value={f.members} onChange={e => set("members", Number(e.target.value))} /></div>
+      </div>
+      <div><label className="lbl">{bn ? "শুরু" : "Move-in"}</label><input className="inp" type="date" value={f.moveInDate} onChange={e => set("moveInDate", e.target.value)} /></div>
+      <div><label className="lbl">📝 {bn ? "নোট" : "Notes"}</label><textarea className="inp" value={f.notes} onChange={e => set("notes", e.target.value)} /></div>
+    </div>
+    <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
       <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
       <button className="btn bp" style={{ flex: 1 }} onClick={handleSave} disabled={busy}>{busy ? "⏳..." : (bn ? "যোগ করুন" : "Add")}</button>
     </div>

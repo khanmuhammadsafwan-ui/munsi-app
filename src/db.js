@@ -90,6 +90,34 @@ export async function getLandlordByInvite(code) {
   return { id: d.id, ...d.data() };
 }
 
+export async function getLandlordByPhone(phone) {
+  // Clean phone - remove spaces, dashes, +88 prefix
+  const clean = phone.replace(/[\s\-\+]/g, "").replace(/^88/, "").replace(/^0088/, "");
+  const variants = [clean, "0" + clean, "+88" + clean, "88" + clean];
+  
+  for (const v of variants) {
+    const q = query(collection(db, C.landlords), where("phone", "==", v));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      return { id: d.id, ...d.data() };
+    }
+  }
+  return null;
+}
+
+export async function searchLandlordsByPhone(phone) {
+  // Get all landlords and filter client-side for partial match
+  const snap = await getDocs(collection(db, C.landlords));
+  const clean = phone.replace(/[\s\-\+]/g, "").replace(/^88/, "").replace(/^0088/, "");
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(l => {
+      const lp = (l.phone || "").replace(/[\s\-\+]/g, "");
+      return lp.includes(clean) || clean.includes(lp.replace(/^0/, ""));
+    });
+}
+
 // ═══ TENANT ═══
 export async function registerTenant(uid, info, landlordId) {
   const data = {
@@ -147,6 +175,69 @@ export async function assignTenantToUnit(tenantId, unitId, rent, advance, moveIn
   await addLog("assign", tenantId, `Tenant → Unit ${unitId}`);
 }
 
+// Self-register: tenant picks their own unit during registration
+export async function selfRegisterTenant(uid, info, landlordId, unitId, unitRent) {
+  const data = {
+    uid,
+    landlordId,
+    name: info.name,
+    phone: info.phone || "",
+    email: info.email || "",
+    nid: info.nid || "",
+    photo: info.photo || "",
+    members: info.members || 1,
+    unitId: unitId,
+    rent: Number(unitRent) || 0,
+    advance: 0,
+    moveInDate: new Date().toISOString().split("T")[0],
+    notes: "",
+    createdAt: NOW(),
+    status: "active",
+  };
+  await setDoc(doc(db, C.tenants, uid), data);
+  await setDoc(doc(db, C.users, uid), {
+    role: "tenant",
+    name: info.name,
+    email: info.email || "",
+    phone: info.phone || "",
+    createdAt: NOW(),
+    status: "active",
+  });
+  // Mark unit as occupied
+  await updateDoc(doc(db, C.units, unitId), { isVacant: false });
+  await addLog("self_register", uid, `Tenant: ${info.name} → Unit: ${unitId}`);
+  return { ...data, id: uid };
+}
+
+// Landlord manually adds a tenant (no auth account needed)
+export async function addManualTenant(landlordId, info, unitId, rent) {
+  const tenantId = "manual_" + ID();
+  const data = {
+    uid: tenantId,
+    landlordId,
+    name: info.name,
+    phone: info.phone || "",
+    email: info.email || "",
+    nid: info.nid || "",
+    photo: "",
+    members: info.members || 1,
+    unitId: unitId || null,
+    rent: Number(rent) || 0,
+    advance: Number(info.advance) || 0,
+    moveInDate: info.moveInDate || new Date().toISOString().split("T")[0],
+    notes: info.notes || "",
+    createdAt: NOW(),
+    status: "active",
+    isManual: true,
+  };
+  await setDoc(doc(db, C.tenants, tenantId), data);
+  if (unitId) {
+    await updateDoc(doc(db, C.units, unitId), { isVacant: false });
+  }
+  await addLog("manual_add", landlordId, `Manual tenant: ${info.name}`);
+  return { ...data, id: tenantId };
+}
+
 export async function unassignTenant(tenantId) {
   const t = await getTenant(tenantId);
   if (t?.unitId) {
@@ -169,7 +260,7 @@ export async function addProperty(landlordId, info) {
   };
   await setDoc(doc(db, C.properties, propId), propData);
 
-  // Create units
+  // Create units with rent & conditions
   for (let f = 1; f <= info.floors; f++) {
     for (let u = 1; u <= info.unitsPerFloor; u++) {
       const label = info.unitType === "flat"
@@ -179,6 +270,12 @@ export async function addProperty(landlordId, info) {
       await setDoc(doc(db, C.units, unitId), {
         id: unitId, propertyId: propId, landlordId,
         floor: f, unitNo: label, type: info.unitType, isVacant: true,
+        rent: Number(info.defaultRent) || 0,
+        conditions: info.defaultConditions || "",
+        bedrooms: info.defaultBedrooms || 0,
+        bathrooms: info.defaultBathrooms || 0,
+        area: info.defaultArea || "",
+        features: info.defaultFeatures || "",
       });
     }
   }
@@ -198,6 +295,10 @@ export async function getAllProperties() {
 }
 
 // ═══ UNITS ═══
+export async function updateUnit(unitId, data) {
+  await updateDoc(doc(db, C.units, unitId), data);
+}
+
 export async function getUnitsByLandlord(landlordId) {
   const q = query(collection(db, C.units), where("landlordId", "==", landlordId));
   const snap = await getDocs(q);
