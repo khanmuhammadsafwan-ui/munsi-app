@@ -344,6 +344,7 @@ export default function App() {
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           onSendNotice={handleSendNotice} notices={notices}
           onUpdateNoticeStatus={handleUpdateNoticeStatus}
+          onMarkNoticeRead={handleMarkNoticeRead}
           agreements={agreements} />
       )}
     </div>
@@ -1581,7 +1582,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (d) => { await onCreateAgreement(d); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
-function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, agreements }) {
+function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, agreements }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("home");
   const [selPay, setSelPay] = useState(null);
@@ -1594,6 +1595,11 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
     { k: "in_progress", l: bn ? "কাজ চলছে" : "In Progress", i: "🟡", c: "#F59E0B" },
     { k: "resolved", l: bn ? "সমাধান" : "Resolved", i: "🟢", c: "#10B981" },
   ];
+
+  // Unread notices for this tenant (received from landlord)
+  const myUid = me?.uid || me?.id;
+  const incomingNotices = (notices || []).filter(n => n.toId === myUid && n.fromId !== myUid);
+  const unreadNotices = incomingNotices.filter(n => !n.read);
 
   // Separate rent and utility payments
   const rentPays = payments.filter(p => !p.type || p.type === "rent");
@@ -1615,11 +1621,17 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
     { k: "bills", l: bn ? "বিল" : "Bills", i: "📄" },
     { k: "history", l: bn ? "ইতিহাস" : "History", i: "📋" },
     { k: "agreement", l: bn ? "চুক্তি" : "Agreement", i: "📜" },
-    { k: "notices", l: bn ? "নোটিশ" : "Notices", i: "📨" },
+    { k: "notices", l: bn ? "নোটিশ" : "Notices", i: "📨", badge: unreadNotices.length || 0 },
   ];
 
   return <div>
-    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" user={me?.name} onLogout={onLogout} />
+    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" user={me?.name} onLogout={onLogout}>
+      {/* Notification bell */}
+      <div onClick={() => setTab("notices")} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
+        <span style={{ fontSize: 18 }}>🔔</span>
+        {unreadNotices.length > 0 && <span style={{ position: "absolute", top: 2, right: 4, width: 18, height: 18, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", animation: "pulse 2s infinite" }}>{unreadNotices.length}</span>}
+      </div>
+    </Bar>
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
       {!me?.unitId ? <div className="G2" style={{ padding: 50, textAlign: "center", animation: "fadeIn .4s" }}>
         <div style={{ fontSize: 52, marginBottom: 12 }}>🏠</div>
@@ -1634,6 +1646,15 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
         {/* ═══ HOME TAB ═══ */}
         {tab === "home" && <>
+          {/* Unread notice banner */}
+          {unreadNotices.length > 0 && <div onClick={() => setTab("notices")} className="CH" style={{ padding: "14px 18px", marginBottom: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(239,68,68,.08), rgba(239,68,68,.02))", border: "1px solid rgba(239,68,68,.15)", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, animation: "fadeIn .4s" }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(239,68,68,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: "pulse 2s infinite" }}>🔔</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, color: "#FCA5A5", fontSize: 13 }}>{unreadNotices.length} {bn ? "টি নতুন নোটিশ" : ` new notice${unreadNotices.length > 1 ? "s" : ""}`}</div>
+              <div style={{ fontSize: 11, color: "#64748B" }}>{unreadNotices[0]?.subject || ""} {unreadNotices.length > 1 ? `(+${unreadNotices.length - 1})` : ""}</div>
+            </div>
+            <span style={{ fontSize: 16, color: "#475569" }}>→</span>
+          </div>}
           {/* Unit Info */}
           <div className="G2" style={{ padding: 22, marginBottom: 16, position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${prop?.color || "#10B981"},transparent)` }} />
@@ -1799,7 +1820,7 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
         {/* ═══ NOTICES TAB ═══ */}
         {tab === "notices" && <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"}</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {unreadNotices.length > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{unreadNotices.length} {bn ? "নতুন" : "new"}</span>}</h3>
             <button className="btn bp bs" onClick={() => setModal("sendNotice")}>✏️ {bn ? "নোটিশ পাঠান" : "Send Notice"}</button>
           </div>
 
@@ -1810,13 +1831,20 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
             </div> :
               notices.map(n => {
                 const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
-                const isMine = n.fromId === me.uid;
-                return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isMine ? st.c : "#60A5FA"}` }}
-                  onClick={() => setSelNotice(n)}>
+                const isMine = n.fromId === myUid;
+                const isUnread = !isMine && !n.read;
+                return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isMine ? st.c : "#60A5FA"}`, background: isUnread ? "rgba(59,130,246,.04)" : undefined }}
+                  onClick={async () => {
+                    setSelNotice(n);
+                    if (isUnread && onMarkNoticeRead) await onMarkNoticeRead(n.id);
+                  }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span className="badge" style={{ background: isMine ? `${st.c}15` : "rgba(59,130,246,.1)", color: isMine ? st.c : "#60A5FA" }}>
-                      {isMine ? (bn ? "📤 আমার পাঠানো" : "📤 Sent") : (bn ? "📥 বাড়িওয়ালা" : "📥 Landlord")}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {isUnread && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0, animation: "pulse 2s infinite" }} />}
+                      <span className="badge" style={{ background: isMine ? `${st.c}15` : "rgba(59,130,246,.1)", color: isMine ? st.c : "#60A5FA" }}>
+                        {isMine ? (bn ? "📤 আমার পাঠানো" : "📤 Sent") : (bn ? "📥 বাড়িওয়ালা" : "📥 Landlord")}
+                      </span>
+                    </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span className="badge" style={{ background: `${st.c}10`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>
                       <span style={{ fontSize: 10, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
@@ -1846,7 +1874,7 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
             </div>
 
             {/* Resolve button for tenant */}
-            {selNotice.fromId === me.uid && selNotice.status !== "resolved" && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+            {selNotice.fromId === myUid && selNotice.status !== "resolved" && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
               <button className="btn bp" style={{ width: "100%" }} onClick={() => {
                 if (onUpdateNoticeStatus) onUpdateNoticeStatus(selNotice.id, "resolved", bn ? "ভাড়াটিয়া সমস্যা সমাধান নিশ্চিত করেছে" : "Tenant confirmed issue resolved");
               }}>🟢 {bn ? "সমস্যা সমাধান হয়েছে" : "Mark as Resolved"}</button>
@@ -1876,9 +1904,10 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
     {/* ═══ BOTTOM TAB BAR ═══ */}
     {me?.unitId && <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(6,11,22,.95)", backdropFilter: "blur(16px)", borderTop: "1px solid rgba(255,255,255,.04)", padding: "8px 0 12px", zIndex: 100 }}>
       <div style={{ maxWidth: 700, margin: "0 auto", display: "flex", justifyContent: "space-around" }}>
-        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "4px 12px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.08)" : "transparent", transition: "all .15s" }}>
+        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "4px 12px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.08)" : "transparent", transition: "all .15s", position: "relative" }}>
           <div style={{ fontSize: 20 }}>{t.i}</div>
           <div style={{ fontSize: 9, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", marginTop: 2 }}>{t.l}</div>
+          {t.badge > 0 && <span style={{ position: "absolute", top: 0, right: 4, width: 16, height: 16, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 8, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
         </div>)}
       </div>
     </div>}
