@@ -92,6 +92,8 @@ export default function App() {
     setProperties(p);
     setUnits(u);
     setPayments(pay);
+    const nots = await DB.getNoticesForUser(uid);
+    setNotices(nots);
   };
 
   const loadTenantData = async (uid) => {
@@ -286,6 +288,8 @@ export default function App() {
           bn={bn} lang={lang} setLang={setLang} onLogout={handleLogout}
           addProperty={handleAddProperty} assignTenant={handleAssign} unassignTenant={handleUnassign}
           recordPayment={handlePayment} manualAddTenant={manualAddTenant}
+          onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
+          notices={notices} onSendNotice={handleSendNotice}
           selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={() => loadLandlordData(user.uid)} />
       )}
 
@@ -841,17 +845,39 @@ function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setS
 }
 
 // ═══ LANDLORD PANEL ═══
-function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [selProp, setSelProp] = useState(null);
   const [selFloor, setSelFloor] = useState(null);
   const [edit, setEdit] = useState(null);
+  const [tab2, setTab2] = useState("properties"); // properties, payments, notices
 
-  const mPay = payments.filter(p => p.monthKey === mk && tenants.some(t => t.id === p.tenantId));
-  const collected = mPay.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  const paidSet = new Set(mPay.filter(p => p.status === "paid").map(p => p.tenantId));
+  const UTIL_TYPES = [
+    { k: "electricity", l: bn ? "বিদ্যুৎ" : "Electricity", i: "⚡", c: "#FBBF24" },
+    { k: "water", l: bn ? "পানি" : "Water", i: "💧", c: "#38BDF8" },
+    { k: "gas", l: bn ? "গ্যাস" : "Gas", i: "🔥", c: "#F97316" },
+    { k: "service", l: bn ? "সার্ভিস" : "Service", i: "🔧", c: "#A78BFA" },
+    { k: "internet", l: bn ? "ইন্টারনেট" : "Internet", i: "🌐", c: "#34D399" },
+    { k: "other", l: bn ? "অন্যান্য" : "Other", i: "📦", c: "#94A3B8" },
+  ];
+
+  // Filter payments for this landlord's tenants
+  const myTenantIds = new Set(tenants.map(t => t.id));
+  const myPayments = payments.filter(p => myTenantIds.has(p.tenantId));
+  const mPay = myPayments.filter(p => p.monthKey === mk);
+
+  // Rent vs Utility
+  const mRent = mPay.filter(p => !p.type || p.type === "rent");
+  const mUtil = mPay.filter(p => p.type && p.type !== "rent");
+  const rentCollected = mRent.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const utilCollected = mUtil.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const totalCollected = rentCollected + utilCollected;
+
+  const paidSet = new Set(mRent.filter(p => p.status === "paid").map(p => p.tenantId));
   const dueT = tenants.filter(t => !paidSet.has(t.id) && t.unitId);
   const unassigned = tenants.filter(t => !t.unitId);
+
+  const unreadNotices = (notices || []).filter(n => n.toId === me?.id && !n.read);
 
   const prop = selProp ? properties.find(p => p.id === selProp) : null;
   const pUnits = selProp ? units.filter(u => u.propertyId === selProp) : [];
@@ -871,11 +897,12 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
         <div className="code">{me.inviteCode}</div>
       </div>}
 
-      <div className="rg2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }}>
+      <div className="rg2" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }}>
         {[{ i: "🏘️", l: bn ? "বাড়ি" : "Properties", v: properties.length },
-          { i: "💰", l: bn ? "আদায়" : "Collected", v: `৳${bn ? FM(collected) : FE(collected)}` },
+          { i: "💰", l: bn ? "ভাড়া আদায়" : "Rent", v: `৳${bn ? FM(rentCollected) : FE(rentCollected)}` },
+          { i: "📄", l: bn ? "বিল আদায়" : "Bills", v: `৳${bn ? FM(utilCollected) : FE(utilCollected)}` },
           { i: "⚠️", l: bn ? "বাকি" : "Due", v: dueT.length },
-          { i: "👤", l: bn ? "অপেক্ষায়" : "Unassigned", v: unassigned.length },
+          { i: "📨", l: bn ? "নোটিশ" : "Notices", v: unreadNotices.length || "—" },
         ].map((s, i) => <div key={i} className="G" style={{ padding: 14 }}>
           <div style={{ fontSize: 20, marginBottom: 4 }}>{s.i}</div>
           <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{s.v}</div>
@@ -883,13 +910,23 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
         </div>)}
       </div>
 
-      {selProp && <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569" }}>
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+        {[{ k: "properties", l: bn ? "🏘️ বাড়ি" : "🏘️ Properties" },
+          { k: "payments", l: bn ? "💰 পেমেন্ট" : "💰 Payments" },
+          { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${unreadNotices.length ? ` (${unreadNotices.length})` : ""}` },
+        ].map(t => <div key={t.k} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); }} style={{ padding: "8px 16px", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600, background: tab2 === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab2 === t.k ? "#34D399" : "#475569", border: `1px solid ${tab2 === t.k ? "rgba(16,185,129,.2)" : "transparent"}` }}>{t.l}</div>)}
+      </div>
+
+      {selProp && tab2 === "properties" && <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569" }}>
         <span style={{ cursor: "pointer", color: "#34D399" }} onClick={() => { setSelProp(null); setSelFloor(null); }}>🏘️ {bn ? "সব" : "All"}</span>
         <span style={{ opacity: .3 }}>›</span>
         <span style={{ cursor: selFloor ? "pointer" : "default", color: selFloor ? "#34D399" : "#E2E8F0" }} onClick={() => setSelFloor(null)}>{prop?.name}</span>
         {selFloor && <><span style={{ opacity: .3 }}>›</span><span style={{ color: "#E2E8F0" }}>{bn ? `${selFloor} তলা` : `Floor ${selFloor}`}</span></>}
       </div>}
 
+      {/* ═══ PROPERTIES TAB ═══ */}
+      {tab2 === "properties" && <>
       {!selProp && <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700 }}>🏘️ {bn ? "বাড়িসমূহ" : "Properties"}</h3>
@@ -949,7 +986,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       {selFloor && <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(fUnits.length, 4)}, 1fr)`, gap: 8 }}>
         {fUnits.map(u => {
           const t = tenants.find(x => x.unitId === u.id);
-          const pay = mPay.find(p => p.tenantId === t?.id);
+          const pay = mRent.find(p => p.tenantId === t?.id);
           return <div key={u.id} className={`uc ${u.isVacant ? "uv" : "uo"}`} onClick={() => {
             if (u.isVacant && unassigned.length > 0) { setEdit({ unitId: u.id }); setModal("assign"); }
             else if (t) { setEdit(t); setModal("detail"); }
@@ -965,6 +1002,84 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
           </div>;
         })}
       </div>}
+      </>}
+
+      {/* ═══ PAYMENTS TAB ═══ */}
+      {tab2 === "payments" && <div>
+        {/* Monthly summary */}
+        <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>📊 {(bn ? MBN : MEN)[selM]} {bn ? "সারাংশ" : "Summary"}</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            <div style={{ padding: 10, background: "rgba(16,185,129,.04)", borderRadius: 10, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "#475569" }}>🏠 {bn ? "ভাড়া" : "Rent"}</div>
+              <div style={{ fontWeight: 800, color: "#34D399", fontSize: 16 }}>৳{bn ? FM(rentCollected) : FE(rentCollected)}</div>
+            </div>
+            <div style={{ padding: 10, background: "rgba(251,191,36,.04)", borderRadius: 10, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "#475569" }}>📄 {bn ? "ইউটিলিটি" : "Utility"}</div>
+              <div style={{ fontWeight: 800, color: "#FBBF24", fontSize: 16 }}>৳{bn ? FM(utilCollected) : FE(utilCollected)}</div>
+            </div>
+            <div style={{ padding: 10, background: "rgba(99,102,241,.04)", borderRadius: 10, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "#475569" }}>💰 {bn ? "মোট" : "Total"}</div>
+              <div style={{ fontWeight: 800, color: "#818CF8", fontSize: 16 }}>৳{bn ? FM(totalCollected) : FE(totalCollected)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* All payments list */}
+        <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>📋 {bn ? "সব পেমেন্ট" : "All Payments"} <span className="badge" style={{ background: "rgba(255,255,255,.04)" }}>{mPay.length}</span></h4>
+        {mPay.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>{bn ? "এই মাসে কোনো পেমেন্ট নেই" : "No payments this month"}</div> :
+        <div className="G" style={{ overflow: "hidden" }}>
+          {mPay.sort((a, b) => (b.paidAt || "").localeCompare(a.paidAt || "")).map(p => {
+            const t = tenants.find(x => x.id === p.tenantId);
+            const pm = PAY.find(m => m.k === p.method);
+            const isRent = !p.type || p.type === "rent";
+            const ut = UTIL_TYPES.find(u => u.k === p.type);
+            return <div key={p.id} className="row">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: isRent ? "rgba(16,185,129,.08)" : `${ut?.c || "#666"}10`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+                  {isRent ? "🏠" : (ut?.i || "📦")}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>{t?.name || "?"}</div>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{isRent ? (bn ? "ভাড়া" : "Rent") : (ut?.l || p.type)} • {p.paidAt?.split("T")[0]}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 800, color: isRent ? "#34D399" : (ut?.c || "#fff") }}>৳{bn ? FM(p.amount) : FE(p.amount)}</div>
+                <span style={{ padding: "1px 6px", borderRadius: 4, fontSize: 8, fontWeight: 700, background: `${pm?.c || "#666"}12`, color: pm?.c }}>{pm?.i} {pm?.l}</span>
+              </div>
+            </div>;
+          })}
+        </div>}
+      </div>}
+
+      {/* ═══ NOTICES TAB ═══ */}
+      {tab2 === "notices" && <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"}</h3>
+        </div>
+        {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
+          {bn ? "কোনো নোটিশ নেই" : "No notices"}
+        </div> :
+          notices.map(n => {
+            const t = tenants.find(x => x.uid === n.fromId || x.id === n.fromId);
+            const isFromTenant = n.fromId !== me?.id;
+            return <div key={n.id} className="G" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isFromTenant ? "#60A5FA" : "#34D399"}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span className="badge" style={{ background: isFromTenant ? "rgba(59,130,246,.1)" : "rgba(16,185,129,.1)", color: isFromTenant ? "#60A5FA" : "#34D399" }}>
+                    {isFromTenant ? `📥 ${t?.name || (bn ? "ভাড়াটিয়া" : "Tenant")}` : (bn ? "📤 আমার পাঠানো" : "📤 Sent")}
+                  </span>
+                  {isFromTenant && !n.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444" }} />}
+                </div>
+                <span style={{ fontSize: 10, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
+              </div>
+              <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 4 }}>{n.subject}</div>
+              <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.5 }}>{n.message}</div>
+            </div>;
+          })}
+      </div>}
     </div>
 
     {modal === "addProp" && <AddPropModal bn={bn} onSave={async (p) => { await addProperty(p); setModal(null); }} onClose={() => setModal(null)} />}
@@ -973,15 +1088,41 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
     {modal === "pay" && edit && <PayModal bn={bn} tenant={edit} mk={mk}
       onSave={async (p) => { await recordPayment(p); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "detail" && edit && <div className="ov" onClick={() => setModal(null)}>
-      <div className="mdl" onClick={e => e.stopPropagation()}>
-        <h3 style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 8 }}>{edit.name}</h3>
+      <div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 8 }}>👤 {edit.name}</h3>
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>📞 {edit.phone} {edit.nid ? `• NID: ${edit.nid}` : ""}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-          {[{ l: bn ? "ভাড়া" : "Rent", v: `৳${edit.rent}` }, { l: bn ? "সদস্য" : "Members", v: edit.members || "—" }]
+          {[{ l: bn ? "ভাড়া" : "Rent", v: `৳${bn ? FM(edit.rent) : FE(edit.rent)}` }, { l: bn ? "সদস্য" : "Members", v: edit.members || "—" }]
             .map((it, i) => <div key={i} style={{ background: "rgba(255,255,255,.02)", borderRadius: 10, padding: "8px 12px" }}>
               <div style={{ fontSize: 10, color: "#475569" }}>{it.l}</div><div style={{ fontSize: 13, fontWeight: 600 }}>{it.v}</div>
             </div>)}
         </div>
+
+        {/* This tenant's payments this month */}
+        {(() => {
+          const tPays = mPay.filter(p => p.tenantId === edit.id);
+          const tRent = tPays.filter(p => !p.type || p.type === "rent");
+          const tUtil = tPays.filter(p => p.type && p.type !== "rent");
+          return tPays.length > 0 && <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#34D399", marginBottom: 8 }}>{(bn ? MBN : MEN)[selM]} {bn ? "পেমেন্ট:" : "payments:"}</div>
+            {tPays.map(p => {
+              const isR = !p.type || p.type === "rent";
+              const ut = UTIL_TYPES.find(u => u.k === p.type);
+              const pm = PAY.find(m => m.k === p.method);
+              return <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 14 }}>{isR ? "🏠" : (ut?.i || "📦")}</span>
+                  <span style={{ fontSize: 11, color: "#94A3B8" }}>{isR ? (bn ? "ভাড়া" : "Rent") : (ut?.l || p.type)}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontWeight: 800, color: isR ? "#34D399" : (ut?.c || "#fff"), fontSize: 13 }}>৳{bn ? FM(p.amount) : FE(p.amount)}</span>
+                  <span style={{ fontSize: 8, color: "#475569" }}>{pm?.i}</span>
+                </div>
+              </div>;
+            })}
+          </div>;
+        })()}
+
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn bp" style={{ flex: 1 }} onClick={() => setModal("pay")}>💰 {bn ? "আদায়" : "Collect"}</button>
           <button className="btn bd" style={{ flex: 1 }} onClick={() => { if (confirm(bn ? "নিশ্চিত?" : "Sure?")) { unassignTenant(edit.id); setModal(null); } }}>🗑️ {bn ? "সরান" : "Remove"}</button>
