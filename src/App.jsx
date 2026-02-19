@@ -259,6 +259,18 @@ export default function App() {
     } catch (e) { notify("❌ " + e.message); }
   };
 
+  const handleUpdateNoticeStatus = async (noticeId, status, statusNote) => {
+    try {
+      await DB.updateNoticeStatus(noticeId, status, statusNote, user.uid);
+      await refresh();
+      notify(bn ? "✓ স্ট্যাটাস আপডেট" : "✓ Status updated");
+    } catch (e) { notify("❌ " + e.message); }
+  };
+
+  const handleMarkNoticeRead = async (noticeId) => {
+    try { await DB.markNoticeRead(noticeId); await refresh(); } catch (e) { /* silent */ }
+  };
+
   const handleLogout = async () => { await signOut(auth); };
 
   if (loading) return <SplashScreen />;
@@ -290,6 +302,7 @@ export default function App() {
           recordPayment={handlePayment} manualAddTenant={manualAddTenant}
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           notices={notices} onSendNotice={handleSendNotice}
+          onUpdateNoticeStatus={handleUpdateNoticeStatus} onMarkNoticeRead={handleMarkNoticeRead}
           selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={() => loadLandlordData(user.uid)} />
       )}
 
@@ -298,7 +311,8 @@ export default function App() {
           bn={bn} lang={lang} setLang={setLang} onLogout={handleLogout}
           recordPayment={handlePayment} selM={selM} selY={selY} mk={mk}
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
-          onSendNotice={handleSendNotice} notices={notices} />
+          onSendNotice={handleSendNotice} notices={notices}
+          onUpdateNoticeStatus={handleUpdateNoticeStatus} />
       )}
     </div>
   );
@@ -845,12 +859,13 @@ function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setS
 }
 
 // ═══ LANDLORD PANEL ═══
-function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [selProp, setSelProp] = useState(null);
   const [selFloor, setSelFloor] = useState(null);
   const [edit, setEdit] = useState(null);
-  const [tab2, setTab2] = useState("properties"); // properties, payments, notices
+  const [tab2, setTab2] = useState("properties");
+  const [selNotice, setSelNotice] = useState(null);
 
   const UTIL_TYPES = [
     { k: "electricity", l: bn ? "বিদ্যুৎ" : "Electricity", i: "⚡", c: "#FBBF24" },
@@ -861,49 +876,60 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
     { k: "other", l: bn ? "অন্যান্য" : "Other", i: "📦", c: "#94A3B8" },
   ];
 
-  // Filter payments for this landlord's tenants
+  const STATUS_MAP = [
+    { k: "open", l: bn ? "নতুন" : "Open", i: "🔴", c: "#EF4444" },
+    { k: "in_progress", l: bn ? "কাজ চলছে" : "In Progress", i: "🟡", c: "#F59E0B" },
+    { k: "resolved", l: bn ? "সমাধান" : "Resolved", i: "🟢", c: "#10B981" },
+  ];
+
   const myTenantIds = new Set(tenants.map(t => t.id));
   const myPayments = payments.filter(p => myTenantIds.has(p.tenantId));
   const mPay = myPayments.filter(p => p.monthKey === mk);
-
-  // Rent vs Utility
   const mRent = mPay.filter(p => !p.type || p.type === "rent");
   const mUtil = mPay.filter(p => p.type && p.type !== "rent");
   const rentCollected = mRent.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const utilCollected = mUtil.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const totalCollected = rentCollected + utilCollected;
-
   const paidSet = new Set(mRent.filter(p => p.status === "paid").map(p => p.tenantId));
   const dueT = tenants.filter(t => !paidSet.has(t.id) && t.unitId);
   const unassigned = tenants.filter(t => !t.unitId);
-
   const unreadNotices = (notices || []).filter(n => n.toId === me?.id && !n.read);
+  const openNotices = (notices || []).filter(n => n.toId === me?.id && n.status !== "resolved");
 
   const prop = selProp ? properties.find(p => p.id === selProp) : null;
   const pUnits = selProp ? units.filter(u => u.propertyId === selProp) : [];
   const floors = prop ? [...new Set(pUnits.map(u => u.floor))].sort((a, b) => a - b) : [];
   const fUnits = selFloor ? pUnits.filter(u => u.floor === selFloor) : [];
 
+  // Helper: find tenant info for a notice
+  const getNoticeTenant = (n) => {
+    const t = tenants.find(x => x.uid === n.fromId || x.id === n.fromId);
+    const u = t ? units.find(x => x.id === t.unitId) : null;
+    const p = u ? properties.find(x => x.id === u.propertyId) : null;
+    return { tenant: t, unit: u, prop: p };
+  };
+
   return <div>
     <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "বাড়িওয়ালা" : "LANDLORD"} icon="🏠" user={me?.name} onLogout={onLogout} onRefresh={onRefresh}>
+      {/* Notification bell */}
+      <div onClick={() => { setTab2("notices"); setSelNotice(null); }} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab2 === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
+        <span style={{ fontSize: 18 }}>📨</span>
+        {unreadNotices.length > 0 && <span style={{ position: "absolute", top: 2, right: 4, width: 16, height: 16, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadNotices.length}</span>}
+      </div>
       <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 11 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
         {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
       </select>
     </Bar>
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 40px" }}>
 
-      {me && <div className="invite-box" style={{ marginBottom: 20, animation: "fadeIn .4s" }}>
-        <div style={{ fontSize: 12, color: "#34D399", fontWeight: 700, marginBottom: 8 }}>🔗 {bn ? "আপনার ইনভাইট কোড — ভাড়াটিয়াদের এটি দিন" : "Share this with tenants"}</div>
-        <div className="code">{me.inviteCode}</div>
-      </div>}
-
+      {/* Stats - clickable */}
       <div className="rg2" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }}>
-        {[{ i: "🏘️", l: bn ? "বাড়ি" : "Properties", v: properties.length },
-          { i: "💰", l: bn ? "ভাড়া আদায়" : "Rent", v: `৳${bn ? FM(rentCollected) : FE(rentCollected)}` },
-          { i: "📄", l: bn ? "বিল আদায়" : "Bills", v: `৳${bn ? FM(utilCollected) : FE(utilCollected)}` },
-          { i: "⚠️", l: bn ? "বাকি" : "Due", v: dueT.length },
-          { i: "📨", l: bn ? "নোটিশ" : "Notices", v: unreadNotices.length || "—" },
-        ].map((s, i) => <div key={i} className="G" style={{ padding: 14 }}>
+        {[{ i: "🏘️", l: bn ? "বাড়ি" : "Properties", v: properties.length, click: () => setTab2("properties") },
+          { i: "💰", l: bn ? "ভাড়া আদায়" : "Rent", v: `৳${bn ? FM(rentCollected) : FE(rentCollected)}`, click: () => setTab2("payments") },
+          { i: "📄", l: bn ? "বিল আদায়" : "Bills", v: `৳${bn ? FM(utilCollected) : FE(utilCollected)}`, click: () => setTab2("payments") },
+          { i: "⚠️", l: bn ? "বাকি" : "Due", v: dueT.length, click: () => setTab2("properties") },
+          { i: "📨", l: bn ? "নোটিশ" : "Notices", v: unreadNotices.length || "—", click: () => setTab2("notices") },
+        ].map((s, i) => <div key={i} className="G CH" style={{ padding: 14 }} onClick={s.click}>
           <div style={{ fontSize: 20, marginBottom: 4 }}>{s.i}</div>
           <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{s.v}</div>
           <div style={{ fontSize: 10, color: "#475569" }}>{s.l}</div>
@@ -915,7 +941,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
         {[{ k: "properties", l: bn ? "🏘️ বাড়ি" : "🏘️ Properties" },
           { k: "payments", l: bn ? "💰 পেমেন্ট" : "💰 Payments" },
           { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${unreadNotices.length ? ` (${unreadNotices.length})` : ""}` },
-        ].map(t => <div key={t.k} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); }} style={{ padding: "8px 16px", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600, background: tab2 === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab2 === t.k ? "#34D399" : "#475569", border: `1px solid ${tab2 === t.k ? "rgba(16,185,129,.2)" : "transparent"}` }}>{t.l}</div>)}
+        ].map(t => <div key={t.k} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); setSelNotice(null); }} style={{ padding: "8px 16px", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600, background: tab2 === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab2 === t.k ? "#34D399" : "#475569", border: `1px solid ${tab2 === t.k ? "rgba(16,185,129,.2)" : "transparent"}` }}>{t.l}</div>)}
       </div>
 
       {selProp && tab2 === "properties" && <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569" }}>
@@ -1055,30 +1081,112 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
 
       {/* ═══ NOTICES TAB ═══ */}
       {tab2 === "notices" && <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"}</h3>
-        </div>
-        {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
-          {bn ? "কোনো নোটিশ নেই" : "No notices"}
-        </div> :
-          notices.map(n => {
-            const t = tenants.find(x => x.uid === n.fromId || x.id === n.fromId);
-            const isFromTenant = n.fromId !== me?.id;
-            return <div key={n.id} className="G" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isFromTenant ? "#60A5FA" : "#34D399"}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span className="badge" style={{ background: isFromTenant ? "rgba(59,130,246,.1)" : "rgba(16,185,129,.1)", color: isFromTenant ? "#60A5FA" : "#34D399" }}>
-                    {isFromTenant ? `📥 ${t?.name || (bn ? "ভাড়াটিয়া" : "Tenant")}` : (bn ? "📤 আমার পাঠানো" : "📤 Sent")}
-                  </span>
-                  {isFromTenant && !n.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444" }} />}
+        {!selNotice ? <>
+          {/* Notice list */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {openNotices.length > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{openNotices.length} {bn ? "খোলা" : "open"}</span>}</h3>
+          </div>
+          {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
+            {bn ? "কোনো নোটিশ নেই" : "No notices"}
+          </div> :
+            notices.filter(n => n.toId === me?.id).map(n => {
+              const { tenant: nt, unit: nu, prop: np } = getNoticeTenant(n);
+              const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
+              return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${st.c}` }} onClick={async () => {
+                setSelNotice(n);
+                if (!n.read && onMarkNoticeRead) await onMarkNoticeRead(n.id);
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(59,130,246,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>👤</div>
+                    <div>
+                      <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{nt?.name || (bn ? "ভাড়াটিয়া" : "Tenant")}</div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>{np?.name || ""} › {nu?.unitNo || ""} {nu ? `(${bn ? `${nu.floor} তলা` : `Floor ${nu.floor}`})` : ""}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {!n.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0 }} />}
+                    <span className="badge" style={{ background: `${st.c}15`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>
+                  </div>
                 </div>
-                <span style={{ fontSize: 10, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
+                <div style={{ fontWeight: 700, color: "#E2E8F0", fontSize: 14, marginBottom: 2 }}>{n.subject}</div>
+                <div style={{ fontSize: 11, color: "#64748B", lineHeight: 1.4 }}>{n.message?.slice(0, 80)}{n.message?.length > 80 ? "..." : ""}</div>
+                <div style={{ fontSize: 9, color: "#334155", marginTop: 6 }}>{n.createdAt?.split("T")[0]}</div>
+              </div>;
+            })}
+        </> :
+        /* ═══ NOTICE DETAIL VIEW ═══ */
+        (() => {
+          const { tenant: nt, unit: nu, prop: np } = getNoticeTenant(selNotice);
+          const st = STATUS_MAP.find(s => s.k === selNotice.status) || STATUS_MAP[0];
+          return <div style={{ animation: "fadeIn .3s" }}>
+            <button className="btn bg bs" onClick={() => setSelNotice(null)} style={{ marginBottom: 14 }}>← {bn ? "পিছনে" : "Back"}</button>
+
+            {/* Tenant info card */}
+            <div className="G2" style={{ padding: 20, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(59,130,246,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>👤</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, color: "#fff", fontSize: 17 }}>{nt?.name || (bn ? "ভাড়াটিয়া" : "Tenant")}</div>
+                  <div style={{ fontSize: 12, color: "#64748B" }}>📞 {nt?.phone || "—"}</div>
+                </div>
               </div>
-              <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 4 }}>{n.subject}</div>
-              <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.5 }}>{n.message}</div>
-            </div>;
-          })}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
+                <div style={{ padding: "8px 12px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{bn ? "বাড়ি" : "Property"}</div>
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>{np?.name || "—"}</div>
+                </div>
+                <div style={{ padding: "8px 12px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{bn ? "ইউনিট" : "Unit"}</div>
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>{nu?.unitNo || "—"} {nu ? `(${nu.floor}F)` : ""}</div>
+                </div>
+                <div style={{ padding: "8px 12px", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, color: "#475569" }}>{bn ? "ভাড়া" : "Rent"}</div>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: "#34D399" }}>৳{bn ? FM(nt?.rent || 0) : FE(nt?.rent || 0)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Issue details */}
+            <div className="G" style={{ padding: 20, marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{selNotice.subject}</h3>
+                <span className="badge" style={{ background: `${st.c}15`, color: st.c, padding: "4px 12px" }}>{st.i} {st.l}</span>
+              </div>
+              <div style={{ fontSize: 13, color: "#CBD5E1", lineHeight: 1.6, marginBottom: 12, padding: 14, background: "rgba(255,255,255,.02)", borderRadius: 10, borderLeft: "3px solid rgba(255,255,255,.06)" }}>{selNotice.message}</div>
+              <div style={{ fontSize: 10, color: "#334155" }}>📅 {selNotice.createdAt?.split("T")[0]}</div>
+            </div>
+
+            {/* Status update buttons */}
+            {selNotice.status !== "resolved" && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🔄 {bn ? "স্ট্যাটাস আপডেট" : "Update Status"}</h4>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {STATUS_MAP.filter(s => s.k !== selNotice.status).map(s => <button key={s.k} className="btn bg" style={{ borderColor: `${s.c}30`, color: s.c }}
+                  onClick={() => {
+                    const note = prompt(bn ? `${s.l} — নোট লিখুন (ঐচ্ছিক):` : `${s.l} — Add note (optional):`);
+                    if (note !== null && onUpdateNoticeStatus) onUpdateNoticeStatus(selNotice.id, s.k, note);
+                  }}>{s.i} {s.l}</button>)}
+              </div>
+            </div>}
+
+            {/* Status history / timeline */}
+            {selNotice.statusHistory?.length > 0 && <div className="G" style={{ padding: 18 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📋 {bn ? "আপডেট ইতিহাস" : "Status History"}</h4>
+              {selNotice.statusHistory.map((h, i) => {
+                const hs = STATUS_MAP.find(s => s.k === h.status) || STATUS_MAP[0];
+                return <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${hs.c}12`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>{hs.i}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: hs.c, fontSize: 12 }}>{hs.l}</div>
+                    {h.note && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{h.note}</div>}
+                    <div style={{ fontSize: 9, color: "#334155", marginTop: 2 }}>{h.at?.split("T")[0]} {h.at?.split("T")[1]?.slice(0, 5)}</div>
+                  </div>
+                </div>;
+              })}
+            </div>}
+          </div>;
+        })()}
       </div>}
     </div>
 
@@ -1133,12 +1241,19 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (info, unitId, rent) => { await manualAddTenant(info, unitId, rent); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
-function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices }) {
+function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("home");
   const [selPay, setSelPay] = useState(null);
+  const [selNotice, setSelNotice] = useState(null);
   const unit = me?.unitId ? units.find(u => u.id === me.unitId) : null;
   const prop = unit ? properties.find(p => p.id === unit.propertyId) : null;
+
+  const STATUS_MAP = [
+    { k: "open", l: bn ? "নতুন" : "Open", i: "🔴", c: "#EF4444" },
+    { k: "in_progress", l: bn ? "কাজ চলছে" : "In Progress", i: "🟡", c: "#F59E0B" },
+    { k: "resolved", l: bn ? "সমাধান" : "Resolved", i: "🟢", c: "#10B981" },
+  ];
 
   // Separate rent and utility payments
   const rentPays = payments.filter(p => !p.type || p.type === "rent");
@@ -1302,20 +1417,72 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
             <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"}</h3>
             <button className="btn bp bs" onClick={() => setModal("sendNotice")}>✏️ {bn ? "নোটিশ পাঠান" : "Send Notice"}</button>
           </div>
-          {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
-            {bn ? "কোনো নোটিশ নেই" : "No notices"}
-          </div> :
-            notices.map(n => <div key={n.id} className="G" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${n.fromId === me.uid ? "#34D399" : "#60A5FA"}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span className="badge" style={{ background: n.fromId === me.uid ? "rgba(16,185,129,.1)" : "rgba(59,130,246,.1)", color: n.fromId === me.uid ? "#34D399" : "#60A5FA" }}>
-                  {n.fromId === me.uid ? (bn ? "📤 আমার পাঠানো" : "📤 Sent") : (bn ? "📥 বাড়িওয়ালা" : "📥 Landlord")}
-                </span>
-                <span style={{ fontSize: 10, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
-              </div>
-              <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 4 }}>{n.subject}</div>
-              <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.5 }}>{n.message}</div>
-            </div>)}
+
+          {!selNotice ? <>
+            {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
+              {bn ? "কোনো নোটিশ নেই" : "No notices"}
+            </div> :
+              notices.map(n => {
+                const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
+                const isMine = n.fromId === me.uid;
+                return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isMine ? st.c : "#60A5FA"}` }}
+                  onClick={() => setSelNotice(n)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span className="badge" style={{ background: isMine ? `${st.c}15` : "rgba(59,130,246,.1)", color: isMine ? st.c : "#60A5FA" }}>
+                      {isMine ? (bn ? "📤 আমার পাঠানো" : "📤 Sent") : (bn ? "📥 বাড়িওয়ালা" : "📥 Landlord")}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="badge" style={{ background: `${st.c}10`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>
+                      <span style={{ fontSize: 10, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 2 }}>{n.subject}</div>
+                  <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.4 }}>{n.message?.slice(0, 80)}{n.message?.length > 80 ? "..." : ""}</div>
+                </div>;
+              })}
+          </> :
+          /* Notice detail */
+          <div style={{ animation: "fadeIn .3s" }}>
+            <button className="btn bg bs" onClick={() => setSelNotice(null)} style={{ marginBottom: 14 }}>← {bn ? "পিছনে" : "Back"}</button>
+
+            <div className="G" style={{ padding: 20, marginBottom: 14 }}>
+              {(() => {
+                const st = STATUS_MAP.find(s => s.k === selNotice.status) || STATUS_MAP[0];
+                return <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{selNotice.subject}</h3>
+                    <span className="badge" style={{ background: `${st.c}15`, color: st.c, padding: "4px 12px" }}>{st.i} {st.l}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#CBD5E1", lineHeight: 1.6, marginBottom: 12, padding: 14, background: "rgba(255,255,255,.02)", borderRadius: 10 }}>{selNotice.message}</div>
+                  <div style={{ fontSize: 10, color: "#334155" }}>📅 {selNotice.createdAt?.split("T")[0]}</div>
+                </>;
+              })()}
+            </div>
+
+            {/* Resolve button for tenant */}
+            {selNotice.fromId === me.uid && selNotice.status !== "resolved" && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+              <button className="btn bp" style={{ width: "100%" }} onClick={() => {
+                if (onUpdateNoticeStatus) onUpdateNoticeStatus(selNotice.id, "resolved", bn ? "ভাড়াটিয়া সমস্যা সমাধান নিশ্চিত করেছে" : "Tenant confirmed issue resolved");
+              }}>🟢 {bn ? "সমস্যা সমাধান হয়েছে" : "Mark as Resolved"}</button>
+            </div>}
+
+            {/* Status history */}
+            {selNotice.statusHistory?.length > 0 && <div className="G" style={{ padding: 18 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📋 {bn ? "আপডেট ইতিহাস" : "Status History"}</h4>
+              {selNotice.statusHistory.map((h, i) => {
+                const hs = STATUS_MAP.find(s => s.k === h.status) || STATUS_MAP[0];
+                return <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${hs.c}12`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>{hs.i}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: hs.c, fontSize: 12 }}>{hs.l}</div>
+                    {h.note && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{h.note}</div>}
+                    <div style={{ fontSize: 9, color: "#334155", marginTop: 2 }}>{h.at?.split("T")[0]}</div>
+                  </div>
+                </div>;
+              })}
+            </div>}
+          </div>}
         </>}
 
       </div>}

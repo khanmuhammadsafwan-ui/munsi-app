@@ -364,6 +364,9 @@ export async function sendNotice(notice) {
     id: nId,
     createdAt: NOW(),
     read: false,
+    status: "open", // open, in_progress, resolved
+    statusNote: "",
+    statusHistory: [],
   };
   await setDoc(doc(db, "notices", nId), data);
   await addLog("notice", notice.fromId, `Notice: ${notice.subject?.slice(0, 40)}`);
@@ -376,7 +379,6 @@ export async function getNoticesForUser(userId) {
   const q2 = query(collection(db, "notices"), where("fromId", "==", userId));
   const snap2 = await getDocs(q2);
   const all = [...snap1.docs, ...snap2.docs].map(d => ({ id: d.id, ...d.data() }));
-  // Deduplicate
   const seen = new Set();
   return all.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; })
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -384,6 +386,17 @@ export async function getNoticesForUser(userId) {
 
 export async function markNoticeRead(noticeId) {
   await updateDoc(doc(db, "notices", noticeId), { read: true });
+}
+
+export async function updateNoticeStatus(noticeId, status, statusNote, updatedBy) {
+  const notice = await getDoc(doc(db, "notices", noticeId));
+  const prev = notice.data()?.statusHistory || [];
+  await updateDoc(doc(db, "notices", noticeId), {
+    status,
+    statusNote: statusNote || "",
+    statusHistory: [...prev, { status, note: statusNote, by: updatedBy, at: NOW() }],
+  });
+  await addLog("notice_status", updatedBy, `Notice ${status}: ${statusNote?.slice(0, 30)}`);
 }
 
 // ═══ LOGS ═══
