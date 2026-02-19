@@ -325,8 +325,18 @@ export async function recordPayment(payment) {
     paidAt: NOW(),
   };
   await setDoc(doc(db, C.payments, payId), data);
-  await addLog("payment", payment.recordedBy || payment.tenantId, `৳${payment.amount} via ${payment.method}`);
+  await addLog("payment", payment.recordedBy || payment.tenantId, `৳${payment.amount} via ${payment.method} [${payment.type || "rent"}]`);
   return data;
+}
+
+export async function updatePayment(payId, updates) {
+  await updateDoc(doc(db, C.payments, payId), updates);
+  await addLog("edit_payment", payId, `Payment updated`);
+}
+
+export async function deletePayment(payId) {
+  await deleteDoc(doc(db, C.payments, payId));
+  await addLog("delete_payment", payId, `Payment deleted`);
 }
 
 export async function getPaymentsByTenant(tenantId) {
@@ -344,6 +354,36 @@ export async function getPaymentsByMonth(monthKey) {
 export async function getAllPayments() {
   const snap = await getDocs(collection(db, C.payments));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// ═══ NOTICES ═══
+export async function sendNotice(notice) {
+  const nId = ID();
+  const data = {
+    ...notice,
+    id: nId,
+    createdAt: NOW(),
+    read: false,
+  };
+  await setDoc(doc(db, "notices", nId), data);
+  await addLog("notice", notice.fromId, `Notice: ${notice.subject?.slice(0, 40)}`);
+  return data;
+}
+
+export async function getNoticesForUser(userId) {
+  const q1 = query(collection(db, "notices"), where("toId", "==", userId));
+  const snap1 = await getDocs(q1);
+  const q2 = query(collection(db, "notices"), where("fromId", "==", userId));
+  const snap2 = await getDocs(q2);
+  const all = [...snap1.docs, ...snap2.docs].map(d => ({ id: d.id, ...d.data() }));
+  // Deduplicate
+  const seen = new Set();
+  return all.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; })
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+}
+
+export async function markNoticeRead(noticeId) {
+  await updateDoc(doc(db, "notices", noticeId), { read: true });
 }
 
 // ═══ LOGS ═══
