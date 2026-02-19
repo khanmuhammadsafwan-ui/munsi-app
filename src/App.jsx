@@ -49,8 +49,22 @@ export default function App() {
   const [notices, setNotices] = useState([]);
   const [agreements, setAgreements] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const noticeUnsubRef = useRef(null);
 
   const notify = (m) => { setToast(m); setTimeout(() => setToast(null), 2800); };
+
+  // ─── REALTIME NOTICE LISTENER ───
+  useEffect(() => {
+    if (user?.uid && (profile?.role === "landlord" || profile?.role === "tenant")) {
+      // Clean up previous listener
+      if (noticeUnsubRef.current) noticeUnsubRef.current();
+      // Start realtime listener
+      noticeUnsubRef.current = DB.onNoticesChange(user.uid, (newNotices) => {
+        setNotices(newNotices);
+      });
+    }
+    return () => { if (noticeUnsubRef.current) { noticeUnsubRef.current(); noticeUnsubRef.current = null; } };
+  }, [user?.uid, profile?.role]);
 
   // ─── AUTH LISTENER ───
   useEffect(() => {
@@ -94,12 +108,10 @@ export default function App() {
     setProperties(p);
     setUnits(u);
     setPayments(pay);
-    const [nots, agrs, exps] = await Promise.all([
-      DB.getNoticesForUser(uid),
+    const [agrs, exps] = await Promise.all([
       DB.getAgreementsByLandlord(uid),
       DB.getExpensesByLandlord(uid),
     ]);
-    setNotices(nots);
     setAgreements(agrs);
     setExpenses(exps);
   };
@@ -111,17 +123,15 @@ export default function App() {
       const ll = await DB.getLandlord(t.landlordId);
       setMyLandlord(ll);
     }
-    const [pay, allU, allP, nots, agrs] = await Promise.all([
+    const [pay, allU, allP, agrs] = await Promise.all([
       DB.getPaymentsByTenant(uid),
       DB.getAllUnits(),
       DB.getAllProperties(),
-      DB.getNoticesForUser(uid),
       DB.getAgreementsByTenant(uid),
     ]);
     setPayments(pay);
     setUnits(allU);
     setProperties(allP);
-    setNotices(nots);
     setAgreements(agrs);
   };
 
@@ -283,6 +293,18 @@ export default function App() {
     try { await DB.markNoticeRead(noticeId); await refresh(); } catch (e) { /* silent */ }
   };
 
+  const handleReplyNotice = async (noticeId, replyData) => {
+    try {
+      await DB.replyToNotice(noticeId, replyData);
+      await refresh();
+      notify(bn ? "✓ রিপ্লাই পাঠানো হয়েছে" : "✓ Reply sent");
+    } catch (e) { notify("❌ " + e.message); }
+  };
+
+  const handleMarkReplyRead = async (noticeId) => {
+    try { await DB.markNoticeReplyRead(noticeId, user.uid); await refresh(); } catch (e) { /* silent */ }
+  };
+
   // Feature #1: Agreements
   const handleCreateAgreement = async (data) => {
     try { await DB.createAgreement(data); await refresh(); notify(bn ? "✓ চুক্তি তৈরি" : "✓ Agreement created"); } catch (e) { notify("❌ " + e.message); }
@@ -331,6 +353,7 @@ export default function App() {
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           notices={notices} onSendNotice={handleSendNotice}
           onUpdateNoticeStatus={handleUpdateNoticeStatus} onMarkNoticeRead={handleMarkNoticeRead}
+          onReplyNotice={handleReplyNotice} onMarkReplyRead={handleMarkReplyRead}
           agreements={agreements} onCreateAgreement={handleCreateAgreement}
           expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense}
           onRentChange={handleRentChange}
@@ -345,6 +368,7 @@ export default function App() {
           onSendNotice={handleSendNotice} notices={notices}
           onUpdateNoticeStatus={handleUpdateNoticeStatus}
           onMarkNoticeRead={handleMarkNoticeRead}
+          onReplyNotice={handleReplyNotice} onMarkReplyRead={handleMarkReplyRead}
           agreements={agreements} />
       )}
     </div>
@@ -892,7 +916,7 @@ function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setS
 }
 
 // ═══ LANDLORD PANEL ═══
-function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, agreements, onCreateAgreement, expenses, onAddExpense, onDeleteExpense, onRentChange, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements, onCreateAgreement, expenses, onAddExpense, onDeleteExpense, onRentChange, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [selProp, setSelProp] = useState(null);
   const [selFloor, setSelFloor] = useState(null);
@@ -927,6 +951,8 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
   const dueT = tenants.filter(t => !paidSet.has(t.id) && t.unitId);
   const unassigned = tenants.filter(t => !t.unitId);
   const unreadNotices = (notices || []).filter(n => n.toId === me?.id && !n.read);
+  const newReplies = (notices || []).filter(n => n.fromId === me?.id && n.hasNewReply && n.lastReplyBy !== me?.id);
+  const totalAlerts = unreadNotices.length + newReplies.length;
   const openNotices = (notices || []).filter(n => n.toId === me?.id && n.status !== "resolved");
 
   // Expenses this month
@@ -952,7 +978,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       {/* Notification bell */}
       <div onClick={() => { setTab2("notices"); setSelNotice(null); }} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab2 === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
         <span style={{ fontSize: 18 }}>📨</span>
-        {unreadNotices.length > 0 && <span style={{ position: "absolute", top: 2, right: 4, width: 16, height: 16, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadNotices.length}</span>}
+        {totalAlerts > 0 && <span style={{ position: "absolute", top: 2, right: 4, width: 16, height: 16, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{totalAlerts}</span>}
       </div>
       <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 11 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
         {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
@@ -966,7 +992,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
           { i: "💰", l: bn ? "ভাড়া আদায়" : "Rent", v: `৳${bn ? FM(rentCollected) : FE(rentCollected)}`, click: () => setTab2("payments") },
           { i: "📄", l: bn ? "বিল আদায়" : "Bills", v: `৳${bn ? FM(utilCollected) : FE(utilCollected)}`, click: () => setTab2("payments") },
           { i: "⚠️", l: bn ? "বাকি" : "Due", v: dueT.length, click: () => setTab2("properties") },
-          { i: "📨", l: bn ? "নোটিশ" : "Notices", v: unreadNotices.length || "—", click: () => setTab2("notices") },
+          { i: "📨", l: bn ? "নোটিশ" : "Notices", v: totalAlerts || "—", click: () => setTab2("notices") },
         ].map((s, i) => <div key={i} className="G CH" style={{ padding: 14 }} onClick={s.click}>
           <div style={{ fontSize: 20, marginBottom: 4 }}>{s.i}</div>
           <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{s.v}</div>
@@ -981,7 +1007,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
           { k: "analytics", l: bn ? "📊 বিশ্লেষণ" : "📊 Analytics" },
           { k: "expenses", l: bn ? "🧾 খরচ" : "🧾 Expenses" },
           { k: "agreements", l: bn ? "📜 চুক্তি" : "📜 Agreements" },
-          { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${unreadNotices.length ? ` (${unreadNotices.length})` : ""}` },
+          { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${totalAlerts ? ` (${totalAlerts})` : ""}` },
         ].map(t => <div key={t.k} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); setSelNotice(null); }} style={{ padding: "8px 14px", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", background: tab2 === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab2 === t.k ? "#34D399" : "#475569", border: `1px solid ${tab2 === t.k ? "rgba(16,185,129,.2)" : "transparent"}` }}>{t.l}</div>)}
       </div>
 
@@ -1394,20 +1420,22 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
         {!selNotice ? <>
           {/* Notice list */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {openNotices.length > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{openNotices.length} {bn ? "খোলা" : "open"}</span>}</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {totalAlerts > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{totalAlerts} {bn ? "নতুন" : "new"}</span>}</h3>
             <button className="btn bp bs" onClick={() => setModal("llNotice")}>✏️ {bn ? "নোটিশ পাঠান" : "Send Notice"}</button>
           </div>
           {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
             {bn ? "কোনো নোটিশ নেই" : "No notices"}
           </div> :
-            notices.filter(n => n.toId === me?.id || n.fromId === me?.id).map(n => {
+            notices.map(n => {
               const isSent = n.fromId === me?.id;
               const { tenant: nt, unit: nu, prop: np } = getNoticeTenant(isSent ? { ...n, fromId: n.toId } : n);
               const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
-              return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isSent ? "#6366F1" : st.c}` }} onClick={async () => {
+              const hasNewReply = isSent && n.hasNewReply && n.lastReplyBy !== me?.id;
+              return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${hasNewReply ? "#A78BFA" : isSent ? "#6366F1" : st.c}`, background: hasNewReply ? "rgba(167,139,250,.03)" : (!isSent && !n.read) ? "rgba(239,68,68,.02)" : undefined }} onClick={async () => {
                 setSelNotice(n);
                 if (!n.read && !isSent && onMarkNoticeRead) await onMarkNoticeRead(n.id);
+                if (hasNewReply && onMarkReplyRead) await onMarkReplyRead(n.id);
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1423,13 +1451,19 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {!isSent && !n.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0 }} />}
-                    {!isSent && <span className="badge" style={{ background: `${st.c}15`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>}
+                    {hasNewReply && <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#A78BFA", animation: "pulse 2s infinite", boxShadow: "0 0 6px rgba(167,139,250,.5)" }} />}
+                    {!isSent && !n.read && <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#EF4444", animation: "pulse 2s infinite" }} />}
+                    {!isSent && n.read && <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10B981" }} />}
+                    {(n.replies?.length || 0) > 0 && <span style={{ fontSize: 9, color: hasNewReply ? "#A78BFA" : "#475569" }}>💬{n.replies.length}</span>}
+                    <span className="badge" style={{ background: `${st.c}15`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>
                   </div>
                 </div>
                 <div style={{ fontWeight: 700, color: "#E2E8F0", fontSize: 14, marginBottom: 2 }}>{n.subject}</div>
                 <div style={{ fontSize: 11, color: "#64748B", lineHeight: 1.4 }}>{n.message?.slice(0, 80)}{n.message?.length > 80 ? "..." : ""}</div>
-                <div style={{ fontSize: 9, color: "#334155", marginTop: 6 }}>{n.createdAt?.split("T")[0]}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                  <span style={{ fontSize: 9, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
+                  {hasNewReply && <span className="badge" style={{ background: "rgba(167,139,250,.1)", color: "#A78BFA", fontSize: 9, animation: "pulse 2s infinite" }}>💬 {bn ? "নতুন রিপ্লাই" : "New reply"}</span>}
+                </div>
               </div>;
             })}
         </> :
@@ -1488,7 +1522,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
             </div>}
 
             {/* Status history / timeline */}
-            {selNotice.statusHistory?.length > 0 && <div className="G" style={{ padding: 18 }}>
+            {selNotice.statusHistory?.length > 0 && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
               <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📋 {bn ? "আপডেট ইতিহাস" : "Status History"}</h4>
               {selNotice.statusHistory.map((h, i) => {
                 const hs = STATUS_MAP.find(s => s.k === h.status) || STATUS_MAP[0];
@@ -1502,6 +1536,43 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
                 </div>;
               })}
             </div>}
+
+            {/* ═══ REPLIES / CONVERSATION ═══ */}
+            <div className="G" style={{ padding: 18 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>💬 {bn ? "কথোপকথন" : "Conversation"} {(selNotice.replies?.length || 0) > 0 && `(${selNotice.replies.length})`}</h4>
+
+              {/* Reply list */}
+              {(selNotice.replies || []).map((r, i) => {
+                const isMe = r.fromId === me?.id;
+                return <div key={r.id || i} style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 10, background: isMe ? "rgba(16,185,129,.1)" : "rgba(59,130,246,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{isMe ? "🏠" : "👤"}</div>
+                  <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: isMe ? "14px 4px 14px 14px" : "4px 14px 14px 14px", background: isMe ? "rgba(16,185,129,.08)" : "rgba(59,130,246,.06)", border: `1px solid ${isMe ? "rgba(16,185,129,.12)" : "rgba(59,130,246,.1)"}` }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: isMe ? "#34D399" : "#60A5FA", marginBottom: 2 }}>{isMe ? (bn ? "আমি" : "Me") : (r.fromName || (bn ? "ভাড়াটিয়া" : "Tenant"))}</div>
+                    <div style={{ fontSize: 12, color: "#CBD5E1", lineHeight: 1.5 }}>{r.text}</div>
+                    <div style={{ fontSize: 8, color: "#334155", marginTop: 4, textAlign: isMe ? "left" : "right" }}>{r.at?.split("T")[0]} {r.at?.split("T")[1]?.slice(0, 5)}</div>
+                  </div>
+                </div>;
+              })}
+
+              {/* Reply input */}
+              {(() => {
+                const [rText, setRText] = [selNotice._rText || "", (v) => setSelNotice({ ...selNotice, _rText: v })];
+                return <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <input className="inp" value={rText} onChange={e => setRText(e.target.value)} placeholder={bn ? "রিপ্লাই লিখুন..." : "Type reply..."} style={{ flex: 1, fontSize: 12 }} onKeyDown={e => {
+                    if (e.key === "Enter" && rText.trim() && onReplyNotice) {
+                      onReplyNotice(selNotice.id, { fromId: me?.id, fromName: me?.name || (bn ? "বাড়িওয়ালা" : "Landlord"), text: rText.trim() });
+                      setRText("");
+                    }
+                  }} />
+                  <button className="btn bp" disabled={!rText.trim()} onClick={() => {
+                    if (rText.trim() && onReplyNotice) {
+                      onReplyNotice(selNotice.id, { fromId: me?.id, fromName: me?.name || (bn ? "বাড়িওয়ালা" : "Landlord"), text: rText.trim() });
+                      setRText("");
+                    }
+                  }}>📩</button>
+                </div>;
+              })()}
+            </div>
           </div>;
         })()}
       </div>}
@@ -1582,11 +1653,12 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (d) => { await onCreateAgreement(d); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
-function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, agreements }) {
+function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("home");
   const [selPay, setSelPay] = useState(null);
   const [selNotice, setSelNotice] = useState(null);
+  const [replyText, setReplyText] = useState("");
   const unit = me?.unitId ? units.find(u => u.id === me.unitId) : null;
   const prop = unit ? properties.find(p => p.id === unit.propertyId) : null;
 
@@ -1596,10 +1668,17 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
     { k: "resolved", l: bn ? "সমাধান" : "Resolved", i: "🟢", c: "#10B981" },
   ];
 
-  // Unread notices for this tenant (received from landlord)
-  const myUid = me?.uid || me?.id;
-  const incomingNotices = (notices || []).filter(n => n.toId === myUid && n.fromId !== myUid);
-  const unreadNotices = incomingNotices.filter(n => !n.read);
+  // ═══ ROBUST NOTICE DETECTION ═══
+  // getNoticesForUser() already returns only notices where toId==me OR fromId==me
+  // So "incoming" = any notice I did NOT send (don't re-check toId, avoids ID mismatch)
+  const myIds = [me?.uid, me?.id].filter(Boolean);
+  const isMe = (id) => myIds.includes(id);
+  const allNotices = notices || [];
+  const incomingNotices = allNotices.filter(n => !isMe(n.fromId));
+  const sentNotices = allNotices.filter(n => isMe(n.fromId));
+  const unreadCount = incomingNotices.filter(n => !n.read).length;
+  const newReplyCount = sentNotices.filter(n => n.hasNewReply && !isMe(n.lastReplyBy)).length;
+  const totalAlerts = unreadCount + newReplyCount;
 
   // Separate rent and utility payments
   const rentPays = payments.filter(p => !p.type || p.type === "rent");
@@ -1621,15 +1700,15 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
     { k: "bills", l: bn ? "বিল" : "Bills", i: "📄" },
     { k: "history", l: bn ? "ইতিহাস" : "History", i: "📋" },
     { k: "agreement", l: bn ? "চুক্তি" : "Agreement", i: "📜" },
-    { k: "notices", l: bn ? "নোটিশ" : "Notices", i: "📨", badge: unreadNotices.length || 0 },
+    { k: "notices", l: bn ? "নোটিশ" : "Notices", i: "📨", badge: totalAlerts },
   ];
 
   return <div>
     <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" user={me?.name} onLogout={onLogout}>
-      {/* Notification bell */}
+      {/* 🔔 Notification Bell */}
       <div onClick={() => setTab("notices")} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
         <span style={{ fontSize: 18 }}>🔔</span>
-        {unreadNotices.length > 0 && <span style={{ position: "absolute", top: 2, right: 4, width: 18, height: 18, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", animation: "pulse 2s infinite" }}>{unreadNotices.length}</span>}
+        {totalAlerts > 0 && <span style={{ position: "absolute", top: 0, right: 2, minWidth: 18, height: 18, borderRadius: 9, background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", animation: "pulse 2s infinite" }}>{totalAlerts}</span>}
       </div>
     </Bar>
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
@@ -1647,11 +1726,15 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
         {/* ═══ HOME TAB ═══ */}
         {tab === "home" && <>
           {/* Unread notice banner */}
-          {unreadNotices.length > 0 && <div onClick={() => setTab("notices")} className="CH" style={{ padding: "14px 18px", marginBottom: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(239,68,68,.08), rgba(239,68,68,.02))", border: "1px solid rgba(239,68,68,.15)", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, animation: "fadeIn .4s" }}>
+          {totalAlerts > 0 && <div onClick={() => setTab("notices")} className="CH" style={{ padding: "14px 18px", marginBottom: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(239,68,68,.08), rgba(239,68,68,.02))", border: "1px solid rgba(239,68,68,.15)", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, animation: "fadeIn .4s" }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(239,68,68,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: "pulse 2s infinite" }}>🔔</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: "#FCA5A5", fontSize: 13 }}>{unreadNotices.length} {bn ? "টি নতুন নোটিশ" : ` new notice${unreadNotices.length > 1 ? "s" : ""}`}</div>
-              <div style={{ fontSize: 11, color: "#64748B" }}>{unreadNotices[0]?.subject || ""} {unreadNotices.length > 1 ? `(+${unreadNotices.length - 1})` : ""}</div>
+              <div style={{ fontWeight: 700, color: "#FCA5A5", fontSize: 13 }}>
+                {unreadCount > 0 && `${unreadCount} ${bn ? "টি নতুন নোটিশ" : ` new notice${unreadCount > 1 ? "s" : ""}`}`}
+                {unreadCount > 0 && newReplyCount > 0 && " + "}
+                {newReplyCount > 0 && `${newReplyCount} ${bn ? "টি নতুন রিপ্লাই" : ` new repl${newReplyCount > 1 ? "ies" : "y"}`}`}
+              </div>
+              <div style={{ fontSize: 11, color: "#64748B" }}>{incomingNotices[0]?.subject || sentNotices[0]?.subject || ""}</div>
             </div>
             <span style={{ fontSize: 16, color: "#475569" }}>→</span>
           </div>}
@@ -1820,68 +1903,81 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
         {/* ═══ NOTICES TAB ═══ */}
         {tab === "notices" && <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {unreadNotices.length > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{unreadNotices.length} {bn ? "নতুন" : "new"}</span>}</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {totalAlerts > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{totalAlerts} {bn ? "নতুন" : "new"}</span>}</h3>
             <button className="btn bp bs" onClick={() => setModal("sendNotice")}>✏️ {bn ? "নোটিশ পাঠান" : "Send Notice"}</button>
           </div>
 
           {!selNotice ? <>
-            {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
+            {allNotices.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
               <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
               {bn ? "কোনো নোটিশ নেই" : "No notices"}
             </div> :
-              notices.map(n => {
+              allNotices.map(n => {
                 const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
-                const isMine = n.fromId === myUid;
+                const isMine = isMe(n.fromId);
                 const isUnread = !isMine && !n.read;
-                return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isMine ? st.c : "#60A5FA"}`, background: isUnread ? "rgba(59,130,246,.04)" : undefined }}
+                const hasReply = isMine && n.hasNewReply && !isMe(n.lastReplyBy);
+                return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isUnread ? "#EF4444" : isMine ? st.c : (n.read ? "#10B981" : "#60A5FA")}`, background: isUnread ? "rgba(239,68,68,.03)" : hasReply ? "rgba(99,102,241,.03)" : undefined }}
                   onClick={async () => {
                     setSelNotice(n);
+                    setReplyText("");
                     if (isUnread && onMarkNoticeRead) await onMarkNoticeRead(n.id);
+                    if (hasReply && onMarkReplyRead) await onMarkReplyRead(n.id);
                   }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {isUnread && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0, animation: "pulse 2s infinite" }} />}
-                      <span className="badge" style={{ background: isMine ? `${st.c}15` : "rgba(59,130,246,.1)", color: isMine ? st.c : "#60A5FA" }}>
-                        {isMine ? (bn ? "📤 আমার পাঠানো" : "📤 Sent") : (bn ? "📥 বাড়িওয়ালা" : "📥 Landlord")}
+                      {/* Read/Unread indicator */}
+                      {isUnread ? <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#EF4444", flexShrink: 0, animation: "pulse 2s infinite", boxShadow: "0 0 6px rgba(239,68,68,.5)" }} />
+                        : !isMine ? <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10B981", flexShrink: 0 }} title={bn ? "পড়া হয়েছে" : "Read"} />
+                        : hasReply ? <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#A78BFA", flexShrink: 0, animation: "pulse 2s infinite" }} />
+                        : null}
+                      <span className="badge" style={{ background: isMine ? `${st.c}15` : isUnread ? "rgba(239,68,68,.1)" : "rgba(16,185,129,.1)", color: isMine ? st.c : isUnread ? "#EF4444" : "#10B981" }}>
+                        {isMine ? (bn ? "📤 আমার পাঠানো" : "📤 Sent") : isUnread ? (bn ? "🔴 নতুন" : "🔴 New") : (bn ? "✅ পড়া হয়েছে" : "✅ Read")}
                       </span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      {(n.replies?.length || 0) > 0 && <span style={{ fontSize: 9, color: "#A78BFA" }}>💬{n.replies.length}</span>}
                       <span className="badge" style={{ background: `${st.c}10`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>
-                      <span style={{ fontSize: 10, color: "#334155" }}>{n.createdAt?.split("T")[0]}</span>
                     </div>
                   </div>
-                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 2 }}>{n.subject}</div>
+                  <div style={{ fontWeight: 700, color: isUnread ? "#fff" : "#CBD5E1", fontSize: 14, marginBottom: 2 }}>{n.subject}</div>
                   <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.4 }}>{n.message?.slice(0, 80)}{n.message?.length > 80 ? "..." : ""}</div>
+                  <div style={{ fontSize: 9, color: "#334155", marginTop: 4 }}>{n.createdAt?.split("T")[0]} • {isMe(n.fromId) ? (bn ? "আমি → বাড়িওয়ালা" : "Me → Landlord") : (bn ? "বাড়িওয়ালা → আমি" : "Landlord → Me")}</div>
                 </div>;
               })}
           </> :
-          /* Notice detail */
+          /* ═══ NOTICE DETAIL + REPLY ═══ */
           <div style={{ animation: "fadeIn .3s" }}>
-            <button className="btn bg bs" onClick={() => setSelNotice(null)} style={{ marginBottom: 14 }}>← {bn ? "পিছনে" : "Back"}</button>
+            <button className="btn bg bs" onClick={() => { setSelNotice(null); setReplyText(""); }} style={{ marginBottom: 14 }}>← {bn ? "পিছনে" : "Back"}</button>
 
+            {/* Notice content */}
             <div className="G" style={{ padding: 20, marginBottom: 14 }}>
               {(() => {
                 const st = STATUS_MAP.find(s => s.k === selNotice.status) || STATUS_MAP[0];
+                const isMine = isMe(selNotice.fromId);
                 return <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{selNotice.subject}</h3>
-                    <span className="badge" style={{ background: `${st.c}15`, color: st.c, padding: "4px 12px" }}>{st.i} {st.l}</span>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {!isMine && <span style={{ width: 10, height: 10, borderRadius: "50%", background: selNotice.read ? "#10B981" : "#EF4444" }} />}
+                      <span className="badge" style={{ background: `${st.c}15`, color: st.c, padding: "4px 12px" }}>{st.i} {st.l}</span>
+                    </div>
                   </div>
                   <div style={{ fontSize: 13, color: "#CBD5E1", lineHeight: 1.6, marginBottom: 12, padding: 14, background: "rgba(255,255,255,.02)", borderRadius: 10 }}>{selNotice.message}</div>
-                  <div style={{ fontSize: 10, color: "#334155" }}>📅 {selNotice.createdAt?.split("T")[0]}</div>
+                  <div style={{ fontSize: 10, color: "#334155" }}>📅 {selNotice.createdAt?.split("T")[0]} • {isMine ? (bn ? "আমি পাঠিয়েছি" : "Sent by me") : (bn ? "বাড়িওয়ালা পাঠিয়েছে" : "From landlord")}</div>
                 </>;
               })()}
             </div>
 
-            {/* Resolve button for tenant */}
-            {selNotice.fromId === myUid && selNotice.status !== "resolved" && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
+            {/* Resolve button (for tenant's own complaints) */}
+            {isMe(selNotice.fromId) && selNotice.status !== "resolved" && <div className="G" style={{ padding: 14, marginBottom: 14 }}>
               <button className="btn bp" style={{ width: "100%" }} onClick={() => {
-                if (onUpdateNoticeStatus) onUpdateNoticeStatus(selNotice.id, "resolved", bn ? "ভাড়াটিয়া সমস্যা সমাধান নিশ্চিত করেছে" : "Tenant confirmed issue resolved");
+                if (onUpdateNoticeStatus) onUpdateNoticeStatus(selNotice.id, "resolved", bn ? "ভাড়াটিয়া সমস্যা সমাধান নিশ্চিত করেছে" : "Tenant confirmed resolved");
               }}>🟢 {bn ? "সমস্যা সমাধান হয়েছে" : "Mark as Resolved"}</button>
             </div>}
 
             {/* Status history */}
-            {selNotice.statusHistory?.length > 0 && <div className="G" style={{ padding: 18 }}>
+            {selNotice.statusHistory?.length > 0 && <div className="G" style={{ padding: 18, marginBottom: 14 }}>
               <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📋 {bn ? "আপডেট ইতিহাস" : "Status History"}</h4>
               {selNotice.statusHistory.map((h, i) => {
                 const hs = STATUS_MAP.find(s => s.k === h.status) || STATUS_MAP[0];
@@ -1895,6 +1991,41 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
                 </div>;
               })}
             </div>}
+
+            {/* ═══ REPLY / CONVERSATION ═══ */}
+            <div className="G" style={{ padding: 18 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>💬 {bn ? "কথোপকথন" : "Conversation"} {(selNotice.replies?.length || 0) > 0 && <span style={{ color: "#475569", fontWeight: 400 }}>({selNotice.replies.length})</span>}</h4>
+
+              {(selNotice.replies || []).length === 0 && <div style={{ padding: 16, textAlign: "center", color: "#334155", fontSize: 12 }}>{bn ? "এখনো কোনো রিপ্লাই নেই" : "No replies yet"}</div>}
+
+              {(selNotice.replies || []).map((r, i) => {
+                const rIsMe = isMe(r.fromId);
+                return <div key={r.id || i} style={{ display: "flex", flexDirection: rIsMe ? "row-reverse" : "row", gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 10, background: rIsMe ? "rgba(16,185,129,.1)" : "rgba(59,130,246,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{rIsMe ? "👤" : "🏠"}</div>
+                  <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: rIsMe ? "14px 4px 14px 14px" : "4px 14px 14px 14px", background: rIsMe ? "rgba(16,185,129,.06)" : "rgba(59,130,246,.06)", border: `1px solid ${rIsMe ? "rgba(16,185,129,.1)" : "rgba(59,130,246,.1)"}` }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: rIsMe ? "#34D399" : "#60A5FA", marginBottom: 2 }}>{rIsMe ? (bn ? "আমি" : "Me") : (r.fromName || (bn ? "বাড়িওয়ালা" : "Landlord"))}</div>
+                    <div style={{ fontSize: 12, color: "#CBD5E1", lineHeight: 1.5 }}>{r.text}</div>
+                    <div style={{ fontSize: 8, color: "#334155", marginTop: 4, textAlign: rIsMe ? "left" : "right" }}>{r.at?.split("T")[0]} {r.at?.split("T")[1]?.slice(0, 5)}</div>
+                  </div>
+                </div>;
+              })}
+
+              {/* Reply input */}
+              <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.04)" }}>
+                <input className="inp" value={replyText} onChange={e => setReplyText(e.target.value)} placeholder={bn ? "রিপ্লাই লিখুন..." : "Type reply..."} style={{ flex: 1, fontSize: 12 }} onKeyDown={e => {
+                  if (e.key === "Enter" && replyText.trim() && onReplyNotice) {
+                    onReplyNotice(selNotice.id, { fromId: me?.uid || me?.id, fromName: me?.name || (bn ? "ভাড়াটিয়া" : "Tenant"), text: replyText.trim() });
+                    setReplyText("");
+                  }
+                }} />
+                <button className="btn bp" disabled={!replyText.trim()} onClick={() => {
+                  if (replyText.trim() && onReplyNotice) {
+                    onReplyNotice(selNotice.id, { fromId: me?.uid || me?.id, fromName: me?.name || (bn ? "ভাড়াটিয়া" : "Tenant"), text: replyText.trim() });
+                    setReplyText("");
+                  }
+                }} style={{ padding: "8px 14px" }}>📩 {bn ? "পাঠান" : "Send"}</button>
+              </div>
+            </div>
           </div>}
         </>}
 
@@ -1924,7 +2055,7 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
       onDelete={onDeletePayment ? async (id) => { await onDeletePayment(id); setModal(null); } : null}
       onClose={() => { setModal(null); setSelPay(null); }} />}
 
-    {modal === "sendNotice" && landlord && <NoticeModal bn={bn} fromId={me.uid} toId={landlord.id}
+    {modal === "sendNotice" && landlord && <NoticeModal bn={bn} fromId={me?.uid || me?.id} toId={landlord.uid || landlord.id}
       onSave={async (n) => { if (onSendNotice) await onSendNotice(n); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }

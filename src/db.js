@@ -118,18 +118,29 @@ export async function updateExpense(id,data){await updateDoc(doc(db,C.expenses,i
 export async function deleteExpense(id){await deleteDoc(doc(db,C.expenses,id));await addLog("delete_expense",id,"Deleted");}
 
 // ═══ NOTICES ═══
-export async function sendNotice(n){const id=ID();const d={...n,id,createdAt:NOW(),read:false,status:"open",statusNote:"",statusHistory:[]};await setDoc(doc(db,C.notices,id),d);await addLog("notice",n.fromId,`Notice: ${n.subject?.slice(0,40)}`);return d;}
+export async function sendNotice(n){const id=ID();const d={...n,id,createdAt:NOW(),read:false,status:"open",statusNote:"",statusHistory:[],replies:[]};await setDoc(doc(db,C.notices,id),d);await addLog("notice",n.fromId,`Notice: ${n.subject?.slice(0,40)}`);return d;}
 export async function getNoticesForUser(uid){
   const q1=query(collection(db,C.notices),where("toId","==",uid));const s1=await getDocs(q1);
   const q2=query(collection(db,C.notices),where("fromId","==",uid));const s2=await getDocs(q2);
   const all=[...s1.docs,...s2.docs].map(d=>({id:d.id,...d.data()}));const seen=new Set();
   return all.filter(n=>{if(seen.has(n.id))return false;seen.add(n.id);return true;}).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
 }
-export async function markNoticeRead(nid){await updateDoc(doc(db,C.notices,nid),{read:true});}
+export async function markNoticeRead(nid){await updateDoc(doc(db,C.notices,nid),{read:true,readAt:NOW()});}
 export async function updateNoticeStatus(nid,status,note,by){
   const n=await getDoc(doc(db,C.notices,nid));const prev=n.data()?.statusHistory||[];
   await updateDoc(doc(db,C.notices,nid),{status,statusNote:note||"",statusHistory:[...prev,{status,note,by,at:NOW()}]});
   await addLog("notice_status",by,`${status}: ${note?.slice(0,30)}`);
+}
+export async function replyToNotice(nid, reply){
+  const n=await getDoc(doc(db,C.notices,nid));const prev=n.data()?.replies||[];
+  const r={...reply, id:ID(), at:NOW()};
+  await updateDoc(doc(db,C.notices,nid),{replies:[...prev, r], hasNewReply:true, lastReplyBy:reply.fromId});
+  await addLog("notice_reply",reply.fromId,`Reply: ${reply.text?.slice(0,30)}`);
+  return r;
+}
+export async function markNoticeReplyRead(nid, byId){
+  const n=await getDoc(doc(db,C.notices,nid));const d=n.data();
+  if(d?.lastReplyBy !== byId) await updateDoc(doc(db,C.notices,nid),{hasNewReply:false});
 }
 
 // ═══ LOGS ═══
@@ -141,3 +152,19 @@ export function isAdminEmail(e){return true;}
 export function onLandlordsChange(cb){return onSnapshot(collection(db,C.landlords),s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))));}
 export function onTenantsChange(lid,cb){return onSnapshot(query(collection(db,C.tenants),where("landlordId","==",lid)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))));}
 export function onUnitsChange(lid,cb){return onSnapshot(query(collection(db,C.units),where("landlordId","==",lid)),s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))));}
+
+// Realtime notice listener — watches both toId and fromId
+export function onNoticesChange(uid, cb) {
+  const toQ = query(collection(db,C.notices),where("toId","==",uid));
+  const fromQ = query(collection(db,C.notices),where("fromId","==",uid));
+  let toResults = [], fromResults = [];
+  const merge = () => {
+    const all = [...toResults, ...fromResults];
+    const seen = new Set();
+    const deduped = all.filter(n => { if(seen.has(n.id)) return false; seen.add(n.id); return true; });
+    cb(deduped.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
+  };
+  const unsub1 = onSnapshot(toQ, s => { toResults = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  const unsub2 = onSnapshot(fromQ, s => { fromResults = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  return () => { unsub1(); unsub2(); };
+}
