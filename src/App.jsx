@@ -1085,29 +1085,36 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
           {/* Notice list */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700 }}>📨 {bn ? "নোটিশ" : "Notices"} {openNotices.length > 0 && <span className="badge bD" style={{ fontSize: 10 }}>{openNotices.length} {bn ? "খোলা" : "open"}</span>}</h3>
+            <button className="btn bp bs" onClick={() => setModal("llNotice")}>✏️ {bn ? "নোটিশ পাঠান" : "Send Notice"}</button>
           </div>
           {(!notices || notices.length === 0) ? <div className="G2" style={{ padding: 40, textAlign: "center", color: "#475569" }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>📨</div>
             {bn ? "কোনো নোটিশ নেই" : "No notices"}
           </div> :
-            notices.filter(n => n.toId === me?.id).map(n => {
-              const { tenant: nt, unit: nu, prop: np } = getNoticeTenant(n);
+            notices.filter(n => n.toId === me?.id || n.fromId === me?.id).map(n => {
+              const isSent = n.fromId === me?.id;
+              const { tenant: nt, unit: nu, prop: np } = getNoticeTenant(isSent ? { ...n, fromId: n.toId } : n);
               const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
-              return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${st.c}` }} onClick={async () => {
+              return <div key={n.id} className="G CH" style={{ padding: 16, marginBottom: 8, borderLeft: `3px solid ${isSent ? "#6366F1" : st.c}` }} onClick={async () => {
                 setSelNotice(n);
-                if (!n.read && onMarkNoticeRead) await onMarkNoticeRead(n.id);
+                if (!n.read && !isSent && onMarkNoticeRead) await onMarkNoticeRead(n.id);
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(59,130,246,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>👤</div>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: isSent ? "rgba(99,102,241,.08)" : "rgba(59,130,246,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{isSent ? "📤" : "👤"}</div>
                     <div>
-                      <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{nt?.name || (bn ? "ভাড়াটিয়া" : "Tenant")}</div>
-                      <div style={{ fontSize: 10, color: "#475569" }}>{np?.name || ""} › {nu?.unitNo || ""} {nu ? `(${bn ? `${nu.floor} তলা` : `Floor ${nu.floor}`})` : ""}</div>
+                      {isSent ? <>
+                        <div style={{ fontWeight: 700, color: "#A78BFA", fontSize: 12 }}>{bn ? "📤 আমার পাঠানো" : "📤 Sent"}</div>
+                        <div style={{ fontSize: 10, color: "#475569" }}>{bn ? "প্রাপক:" : "To:"} {n.toAll ? (bn ? "সব ভাড়াটিয়া" : "All tenants") : (nt?.name || "—")} {nu ? `› ${nu.unitNo}` : ""}</div>
+                      </> : <>
+                        <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{nt?.name || (bn ? "ভাড়াটিয়া" : "Tenant")}</div>
+                        <div style={{ fontSize: 10, color: "#475569" }}>{np?.name || ""} › {nu?.unitNo || ""} {nu ? `(${bn ? `${nu.floor} তলা` : `Floor ${nu.floor}`})` : ""}</div>
+                      </>}
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {!n.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0 }} />}
-                    <span className="badge" style={{ background: `${st.c}15`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>
+                    {!isSent && !n.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0 }} />}
+                    {!isSent && <span className="badge" style={{ background: `${st.c}15`, color: st.c, fontSize: 9 }}>{st.i} {st.l}</span>}
                   </div>
                 </div>
                 <div style={{ fontWeight: 700, color: "#E2E8F0", fontSize: 14, marginBottom: 2 }}>{n.subject}</div>
@@ -1239,6 +1246,8 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
     </div>}
     {modal === "manualTenant" && <ManualAddTenantModal bn={bn} units={units.filter(u => u.isVacant)} properties={properties}
       onSave={async (info, unitId, rent) => { await manualAddTenant(info, unitId, rent); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal === "llNotice" && <LandlordNoticeModal bn={bn} tenants={tenants.filter(t => t.unitId)} units={units} properties={properties} fromId={me?.id}
+      onSave={async (notices) => { for (const n of notices) await onSendNotice(n); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
 function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus }) {
@@ -1803,6 +1812,81 @@ function NoticeModal({ bn, fromId, toId, onSave, onClose }) {
         if (!subject || !message) { alert(bn ? "বিষয় ও বিস্তারিত লিখুন" : "Fill subject & details"); return; }
         setBusy(true); await onSave({ fromId, toId, subject, message }); setBusy(false);
       }}>📨 {busy ? "⏳" : (bn ? "পাঠান" : "Send")}</button>
+    </div>
+  </div></div>;
+}
+
+// ═══ LANDLORD NOTICE MODAL ═══
+function LandlordNoticeModal({ bn, tenants, units, properties, fromId, onSave, onClose }) {
+  const [mode, setMode] = useState("all");
+  const [selected, setSelected] = useState(new Set());
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const QUICK = bn
+    ? ["ভাড়া পরিশোধের অনুরোধ", "মেরামত কাজের নোটিশ", "পানি/গ্যাস বন্ধ থাকবে", "বিল্ডিং মিটিং", "পরিষ্কার-পরিচ্ছন্নতা", "গুরুত্বপূর্ণ ঘোষণা"]
+    : ["Rent reminder", "Repair notice", "Water/Gas outage", "Building meeting", "Cleanliness", "Announcement"];
+
+  const toggle = (id) => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
+
+  const handleSend = async () => {
+    if (!subject || !message) { alert(bn ? "বিষয় ও বিস্তারিত লিখুন" : "Fill subject & details"); return; }
+    setBusy(true);
+    const targets = mode === "all" ? tenants : tenants.filter(t => selected.has(t.id));
+    if (targets.length === 0) { alert(bn ? "ভাড়াটিয়া নির্বাচন করুন" : "Select tenant(s)"); setBusy(false); return; }
+    const list = targets.map(t => ({ fromId, toId: t.uid || t.id, subject, message, toAll: mode === "all" }));
+    await onSave(list);
+    setBusy(false);
+  };
+
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📨 {bn ? "ভাড়াটিয়াদের নোটিশ" : "Notice to Tenants"}</h2>
+    <p style={{ fontSize: 11, color: "#475569", marginBottom: 14 }}>{bn ? "একজন বা সব ভাড়াটিয়াকে নোটিশ পাঠান" : "Send to one or all tenants"}</p>
+
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Recipient mode */}
+      <div>
+        <label className="lbl">{bn ? "প্রাপক" : "Recipients"}</label>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <div onClick={() => setMode("all")} style={{ flex: 1, padding: "10px 8px", borderRadius: 10, cursor: "pointer", textAlign: "center", background: mode === "all" ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.02)", border: `1.5px solid ${mode === "all" ? "rgba(16,185,129,.3)" : "rgba(255,255,255,.04)"}`, color: mode === "all" ? "#34D399" : "#475569", fontWeight: 700, fontSize: 12 }}>
+            👥 {bn ? `সবাই (${tenants.length})` : `All (${tenants.length})`}
+          </div>
+          <div onClick={() => setMode("select")} style={{ flex: 1, padding: "10px 8px", borderRadius: 10, cursor: "pointer", textAlign: "center", background: mode === "select" ? "rgba(99,102,241,.1)" : "rgba(255,255,255,.02)", border: `1.5px solid ${mode === "select" ? "rgba(99,102,241,.3)" : "rgba(255,255,255,.04)"}`, color: mode === "select" ? "#A78BFA" : "#475569", fontWeight: 700, fontSize: 12 }}>
+            👤 {bn ? "নির্বাচিত" : "Select"} {selected.size > 0 ? `(${selected.size})` : ""}
+          </div>
+        </div>
+        {mode === "select" && <div style={{ maxHeight: 160, overflowY: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,.04)" }}>
+          {tenants.map(t => {
+            const u = units.find(x => x.id === t.unitId);
+            const p = u ? properties.find(x => x.id === u.propertyId) : null;
+            const on = selected.has(t.id);
+            return <div key={t.id} onClick={() => toggle(t.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer", background: on ? "rgba(99,102,241,.06)" : "transparent", borderBottom: "1px solid rgba(255,255,255,.02)" }}>
+              <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${on ? "#A78BFA" : "rgba(255,255,255,.1)"}`, background: on ? "#A78BFA" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fff" }}>{on ? "✓" : ""}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: on ? "#E2E8F0" : "#94A3B8" }}>{t.name}</div>
+                <div style={{ fontSize: 9, color: "#475569" }}>{p?.name} › {u?.unitNo} • 📞 {t.phone}</div>
+              </div>
+            </div>;
+          })}
+        </div>}
+      </div>
+
+      {/* Quick topics */}
+      <div><label className="lbl">{bn ? "দ্রুত বিষয়" : "Quick"}</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {QUICK.map(q => <span key={q} onClick={() => setSubject(q)} style={{ padding: "4px 10px", borderRadius: 20, fontSize: 10, fontWeight: 600, cursor: "pointer", background: subject === q ? "rgba(16,185,129,.12)" : "rgba(255,255,255,.03)", color: subject === q ? "#34D399" : "#64748B", border: `1px solid ${subject === q ? "rgba(16,185,129,.2)" : "rgba(255,255,255,.04)"}` }}>{q}</span>)}
+        </div>
+      </div>
+
+      <div><label className="lbl">{bn ? "বিষয়" : "Subject"}</label><input className="inp" value={subject} onChange={e => setSubject(e.target.value)} /></div>
+      <div><label className="lbl">{bn ? "বিস্তারিত" : "Message"}</label><textarea className="inp" style={{ minHeight: 70 }} value={message} onChange={e => setMessage(e.target.value)} placeholder={bn ? "নোটিশ লিখুন..." : "Write notice..."} /></div>
+    </div>
+    <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+      <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
+      <button className="btn bp" style={{ flex: 1 }} disabled={busy} onClick={handleSend}>
+        📨 {busy ? "⏳" : (mode === "all" ? (bn ? `সবাইকে (${tenants.length})` : `All (${tenants.length})`) : (bn ? `পাঠান (${selected.size})` : `Send (${selected.size})`))}
+      </button>
     </div>
   </div></div>;
 }
