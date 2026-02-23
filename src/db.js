@@ -7,7 +7,7 @@ import {
 const ID = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 const INVITE = () => "MN-" + Math.random().toString(36).substr(2, 4).toUpperCase();
 const NOW = () => new Date().toISOString();
-const C = { users:"users", landlords:"landlords", tenants:"tenants", properties:"properties", units:"units", payments:"payments", logs:"logs", notices:"notices", agreements:"agreements", expenses:"expenses" };
+const C = { users:"users", landlords:"landlords", tenants:"tenants", properties:"properties", units:"units", payments:"payments", logs:"logs", notices:"notices", agreements:"agreements", expenses:"expenses", meters:"meterReadings" };
 
 // ═══ USER ═══
 export async function createUserProfile(uid, data) { await setDoc(doc(db,C.users,uid),{...data,createdAt:NOW(),status:"active"}); }
@@ -31,6 +31,7 @@ export async function getLandlordByPhone(phone) {
   for(const v of [clean,"0"+clean,"+88"+clean,"88"+clean]){const q=query(collection(db,C.landlords),where("phone","==",v));const s=await getDocs(q);if(!s.empty)return{id:s.docs[0].id,...s.docs[0].data()};}
   return null;
 }
+export async function updateLandlordProfile(uid, data) { await updateDoc(doc(db,C.landlords,uid),data); }
 export async function searchLandlordsByPhone(phone) {
   const s=await getDocs(collection(db,C.landlords));const clean=phone.replace(/[\s\-\+]/g,"").replace(/^88/,"").replace(/^0088/,"");
   return s.docs.map(d=>({id:d.id,...d.data()})).filter(l=>{const lp=(l.phone||"").replace(/[\s\-\+]/g,"");return lp.includes(clean)||clean.includes(lp.replace(/^0/,""));});
@@ -70,6 +71,48 @@ export async function unassignTenant(tid) {
   const t=await getTenant(tid);if(t?.unitId)await updateDoc(doc(db,C.units,t.unitId),{isVacant:true});
   await updateDoc(doc(db,C.tenants,tid),{unitId:null,rent:0,advance:0});
   await addLog("unassign",tid,"Removed from unit");
+}
+// ═══ MOVE-OUT WITH SETTLEMENT ═══
+export async function moveOutTenant(tid, settlement) {
+  const t=await getTenant(tid);
+  if(t?.unitId)await updateDoc(doc(db,C.units,t.unitId),{isVacant:true});
+  const moveOutData = {
+    unitId:null, rent:0, advance:0, status:"moved_out",
+    moveOutDate: NOW().split("T")[0],
+    moveOutSettlement: {
+      ...settlement,
+      originalDeposit: t?.advance||0,
+      settledAt: NOW()
+    }
+  };
+  await updateDoc(doc(db,C.tenants,tid), moveOutData);
+  await addLog("move_out",tid,`Move-out: refund ৳${settlement.refundAmount||0}`);
+}
+
+// ═══ DEPOSIT / ADVANCE UPDATE ═══
+export async function updateTenantDeposit(tid, amount, note) {
+  const t=await getTenant(tid);
+  const history = t?.depositHistory||[];
+  history.push({amount:Number(amount), note:note||"", date:NOW(), prev:t?.advance||0});
+  await updateDoc(doc(db,C.tenants,tid),{advance:Number(amount), depositHistory:history});
+  await addLog("deposit_update",tid,`Deposit: ৳${amount}`);
+}
+
+// ═══ METER READINGS ═══
+export async function addMeterReading(data) {
+  const id=ID();
+  const r={...data, id, createdAt:NOW()};
+  await setDoc(doc(db,C.meters,id),r);
+  await addLog("meter_reading",data.recordedBy||data.landlordId,`Meter: ${data.unitId} ${data.prevReading}→${data.currentReading}`);
+  return r;
+}
+export async function getMeterReadingsByLandlord(lid) {
+  const q=query(collection(db,C.meters),where("landlordId","==",lid));
+  const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));
+}
+export async function getMeterReadingsByUnit(uid) {
+  const q=query(collection(db,C.meters),where("unitId","==",uid));
+  const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
 }
 // Feature #3: Rent Change History
 export async function updateTenantRent(tid, newRent, reason) {
