@@ -38,7 +38,7 @@ export async function searchLandlordsByPhone(phone) {
 
 // ═══ TENANT ═══
 export async function registerTenant(uid, info, landlordId) {
-  const data={uid,landlordId,name:info.name,phone:info.phone||"",email:info.email||"",nid:info.nid||"",photo:info.photo||"",members:info.members||1,unitId:null,rent:0,advance:0,moveInDate:"",notes:"",rentHistory:[],createdAt:NOW(),status:"active"};
+  const data={uid,landlordId,name:info.name,phone:info.phone||"",email:info.email||"",nid:info.nid||"",photo:info.photo||"",members:info.members||1,permanentAddress:info.permanentAddress||"",unitId:null,rent:0,advance:0,moveInDate:"",notes:"",rentHistory:[],createdAt:NOW(),status:"active"};
   await setDoc(doc(db,C.tenants,uid),data);
   await setDoc(doc(db,C.users,uid),{role:"tenant",name:info.name,email:info.email||"",phone:info.phone||"",createdAt:NOW(),status:"active"});
   await addLog("register",uid,`Tenant: ${info.name}`);return{...data,id:uid};
@@ -53,7 +53,7 @@ export async function assignTenantToUnit(tid, uid, rent, advance, moveIn, notes)
   await addLog("assign",tid,`Tenant → Unit ${uid}`);
 }
 export async function selfRegisterTenant(uid, info, landlordId, unitId, unitRent) {
-  const data={uid,landlordId,name:info.name,phone:info.phone||"",email:info.email||"",nid:info.nid||"",photo:info.photo||"",members:info.members||1,unitId,rent:Number(unitRent)||0,advance:0,moveInDate:new Date().toISOString().split("T")[0],notes:"",rentHistory:[{rent:Number(unitRent)||0,date:NOW(),reason:"initial"}],createdAt:NOW(),status:"active"};
+  const data={uid,landlordId,name:info.name,phone:info.phone||"",email:info.email||"",nid:info.nid||"",photo:info.photo||"",members:info.members||1,permanentAddress:info.permanentAddress||"",unitId,rent:Number(unitRent)||0,advance:0,moveInDate:new Date().toISOString().split("T")[0],notes:"",rentHistory:[{rent:Number(unitRent)||0,date:NOW(),reason:"initial"}],createdAt:NOW(),status:"active"};
   await setDoc(doc(db,C.tenants,uid),data);
   await setDoc(doc(db,C.users,uid),{role:"tenant",name:info.name,email:info.email||"",phone:info.phone||"",createdAt:NOW(),status:"active"});
   await updateDoc(doc(db,C.units,unitId),{isVacant:false});
@@ -61,7 +61,7 @@ export async function selfRegisterTenant(uid, info, landlordId, unitId, unitRent
 }
 export async function addManualTenant(landlordId, info, unitId, rent) {
   const tid="manual_"+ID();
-  const data={uid:tid,landlordId,name:info.name,phone:info.phone||"",email:info.email||"",nid:info.nid||"",photo:"",members:info.members||1,unitId:unitId||null,rent:Number(rent)||0,advance:Number(info.advance)||0,moveInDate:info.moveInDate||new Date().toISOString().split("T")[0],notes:info.notes||"",rentHistory:[{rent:Number(rent)||0,date:NOW(),reason:"initial"}],createdAt:NOW(),status:"active",isManual:true};
+  const data={uid:tid,landlordId,name:info.name,phone:info.phone||"",email:info.email||"",nid:info.nid||"",photo:"",members:info.members||1,permanentAddress:info.permanentAddress||"",unitId:unitId||null,rent:Number(rent)||0,advance:Number(info.advance)||0,moveInDate:info.moveInDate||new Date().toISOString().split("T")[0],notes:info.notes||"",rentHistory:[{rent:Number(rent)||0,date:NOW(),reason:"initial"}],createdAt:NOW(),status:"active",isManual:true};
   await setDoc(doc(db,C.tenants,tid),data);
   if(unitId)await updateDoc(doc(db,C.units,unitId),{isVacant:false});
   await addLog("manual_add",landlordId,`Manual: ${info.name}`);return{...data,id:tid};
@@ -84,7 +84,7 @@ export async function addProperty(landlordId, info) {
   await setDoc(doc(db,C.properties,pid),pd);
   for(let f=1;f<=info.floors;f++)for(let u=1;u<=info.unitsPerFloor;u++){
     const label=info.unitType==="flat"?`${f}${String.fromCharCode(64+u)}`:`${f}${String(u).padStart(2,"0")}`;
-    const uid=ID();await setDoc(doc(db,C.units,uid),{id:uid,propertyId:pid,landlordId,floor:f,unitNo:label,type:info.unitType,isVacant:true,rent:Number(info.defaultRent)||0,conditions:info.defaultConditions||"",bedrooms:info.defaultBedrooms||0,bathrooms:info.defaultBathrooms||0,area:info.defaultArea||"",features:info.defaultFeatures||""});
+    const uid=ID();await setDoc(doc(db,C.units,uid),{id:uid,propertyId:pid,landlordId,floor:f,unitNo:label,type:info.unitType,isVacant:true,rent:Number(info.defaultRent)||0,serviceCharge:Number(info.defaultServiceCharge)||0,electricityRate:Number(info.electricityRate)||0,gasBill:Number(info.defaultGasBill)||0,conditions:info.defaultConditions||"",bedrooms:info.defaultBedrooms||0,bathrooms:info.defaultBathrooms||0,area:info.defaultArea||"",features:info.defaultFeatures||""});
   }
   await addLog("add_property",landlordId,`Property: ${info.name}`);return pd;
 }

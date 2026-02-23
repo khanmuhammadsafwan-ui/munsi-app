@@ -583,7 +583,7 @@ function RegTenant({ bn, user, onReg, onBack }) {
   const [units, setUnits] = useState([]);
   const [selProp, setSelProp] = useState(null);
   const [selUnit, setSelUnit] = useState(null);
-  const [f, sF] = useState({ name: user?.displayName || "", phone: "", email: user?.email || "", nid: "", photo: user?.photoURL || "", members: 1 });
+  const [f, sF] = useState({ name: user?.displayName || "", phone: "", email: user?.email || "", nid: "", photo: user?.photoURL || "", members: 1, permanentAddress: "" });
   const set = (k, v) => sF(o => ({ ...o, [k]: v }));
 
   // Step 1: Search landlord by phone
@@ -782,6 +782,7 @@ function RegTenant({ bn, user, onReg, onBack }) {
             <div><label className="lbl">{bn ? "পরিবারের সদস্য" : "Family Members"}</label><input className="inp" type="number" min="1" value={f.members} onChange={e => set("members", Number(e.target.value))} /></div>
             <div><label className="lbl">{bn ? "ইমেইল" : "Email"}</label><input className="inp" value={f.email} onChange={e => set("email", e.target.value)} /></div>
           </div>
+          <div><label className="lbl">🏡 {bn ? "স্থায়ী ঠিকানা" : "Permanent Address"}</label><textarea className="inp" style={{ minHeight: 45 }} value={f.permanentAddress} onChange={e => set("permanentAddress", e.target.value)} placeholder={bn ? "গ্রাম/মহল্লা, উপজেলা, জেলা" : "Village/Area, Upazila, District"} /></div>
           <button className="btn bp" style={{ width: "100%", padding: 14, marginTop: 8, fontSize: 15 }} onClick={handleRegister} disabled={busy}>
             {busy ? "⏳ ..." : (bn ? "✓ নিবন্ধন করুন" : "✓ Register")}
           </button>
@@ -1659,6 +1660,9 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
   const [selPay, setSelPay] = useState(null);
   const [selNotice, setSelNotice] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [showProfile, setShowProfile] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  const [waMsg, setWaMsg] = useState("");
   const unit = me?.unitId ? units.find(u => u.id === me.unitId) : null;
   const prop = unit ? properties.find(p => p.id === unit.propertyId) : null;
 
@@ -1710,6 +1714,33 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
         <span style={{ fontSize: 18 }}>🔔</span>
         {totalAlerts > 0 && <span style={{ position: "absolute", top: 0, right: 2, minWidth: 18, height: 18, borderRadius: 9, background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", animation: "pulse 2s infinite" }}>{totalAlerts}</span>}
       </div>
+      {/* 👤 User Profile Dropdown */}
+      <div style={{ position: "relative" }}>
+        <div onClick={() => setShowProfile(!showProfile)} style={{ cursor: "pointer", padding: "4px 10px", background: showProfile ? "rgba(16,185,129,.08)" : "rgba(255,255,255,.025)", borderRadius: 8, fontSize: 11, color: "#64748B", display: "flex", alignItems: "center", gap: 4 }}>
+          👤 {me?.name?.split(" ")[0]} <span style={{ fontSize: 8, opacity: .5 }}>{showProfile ? "▲" : "▼"}</span>
+        </div>
+        {showProfile && <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: "#111827", border: "1px solid rgba(255,255,255,.06)", borderRadius: 14, padding: 18, zIndex: 200, boxShadow: "0 12px 40px rgba(0,0,0,.5)", animation: "fadeIn .2s" }} onClick={e => e.stopPropagation()}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg,#34D399,#60A5FA)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>👤</div>
+            <div><div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{me?.name || "—"}</div>
+              <div style={{ fontSize: 10, color: "#34D399" }}>{bn ? "ভাড়াটিয়া" : "Tenant"}</div></div>
+          </div>
+          {[
+            { i: "📞", l: bn ? "মোবাইল" : "Mobile", v: me?.phone || "—" },
+            { i: "🪪", l: "NID", v: me?.nid || "—" },
+            { i: "🏡", l: bn ? "স্থায়ী ঠিকানা" : "Permanent Address", v: me?.permanentAddress || "—" },
+            { i: "📧", l: bn ? "ইমেইল" : "Email", v: me?.email || "—" },
+            { i: "👥", l: bn ? "সদস্য সংখ্যা" : "Members", v: me?.members || "—" },
+          ].map((it, i) => <div key={i} style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: i < 4 ? "1px solid rgba(255,255,255,.02)" : "none" }}>
+            <span style={{ fontSize: 13, width: 22, textAlign: "center" }}>{it.i}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9, color: "#475569", fontWeight: 600 }}>{it.l}</div>
+              <div style={{ fontSize: 12, color: "#CBD5E1", wordBreak: "break-word" }}>{it.v}</div>
+            </div>
+          </div>)}
+          <button className="btn bg" style={{ width: "100%", marginTop: 10, fontSize: 11 }} onClick={() => setShowProfile(false)}>✕ {bn ? "বন্ধ করুন" : "Close"}</button>
+        </div>}
+      </div>
     </Bar>
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
       {!me?.unitId ? <div className="G2" style={{ padding: 50, textAlign: "center", animation: "fadeIn .4s" }}>
@@ -1738,64 +1769,134 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
             </div>
             <span style={{ fontSize: 16, color: "#475569" }}>→</span>
           </div>}
-          {/* Unit Info */}
-          <div className="G2" style={{ padding: 22, marginBottom: 16, position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${prop?.color || "#10B981"},transparent)` }} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
-              <div><div style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>{bn ? "আমার ইউনিট" : "MY UNIT"}</div>
-                <h2 style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>{unit?.unitNo} • {bn ? `${unit?.floor} তলা` : `Floor ${unit?.floor}`}</h2>
-                <div style={{ fontSize: 12, color: "#475569" }}>📍 {prop?.name} — {prop?.address}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "#475569" }}>{bn ? "মাসিক ভাড়া" : "Rent"}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#34D399" }}>৳{bn ? FM(me.rent) : FE(me.rent)}</div></div>
-            </div>
-          </div>
 
-          {/* Rent Status */}
-          <div className="G" style={{ padding: 20, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700 }}>💰 {(bn ? MBN : MEN)[selM]} {bn ? "ভাড়া" : "Rent"}</h3>
-              {(!curRentPay || curRentPay.status !== "paid") && <button className="btn bp bs" onClick={() => setModal("payRent")}>💰 {bn ? "ভাড়া দিন" : "Pay"}</button>}
+          {/* ═══ সারি ১: বাড়িওয়ালার তথ্য + যোগাযোগ ═══ */}
+          {landlord && <div className="G2" style={{ padding: 18, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(99,102,241,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🏠</div>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>{bn ? "বাড়িওয়ালা" : "LANDLORD"}</div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{landlord.name}</div>
+                </div>
+              </div>
+              <button className="btn bp bs" onClick={() => setShowContact(!showContact)} style={{ fontSize: 11 }}>
+                📞 {bn ? "যোগাযোগ" : "Contact"}
+              </button>
             </div>
-            {curRentPay ? <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span className={`badge ${curRentPay.status === "paid" ? "bP" : "bPa"}`} style={{ fontSize: 13, padding: "6px 16px" }}>
-                {curRentPay.status === "paid" ? "✓" : "◐"} {curRentPay.status === "paid" ? (bn ? "পরিশোধিত" : "Paid") : (bn ? "আংশিক" : "Partial")}
-              </span>
-              <span style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>৳{bn ? FM(curRentPay.amount) : FE(curRentPay.amount)}</span>
-            </div> : <div style={{ padding: 14, background: "rgba(245,158,11,.04)", borderRadius: 10, border: "1px solid rgba(245,158,11,.08)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 24 }}>⚠️</span>
-              <div><div style={{ fontWeight: 700, color: "#F59E0B" }}>{bn ? "ভাড়া বাকি" : "Due"}</div><div style={{ fontSize: 12, color: "#475569" }}>৳{bn ? FM(me.rent) : FE(me.rent)}</div></div>
+
+            {/* Contact Options */}
+            {showContact && <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.04)", animation: "fadeIn .2s" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {/* 💬 WhatsApp Message */}
+                <div style={{ background: "rgba(37,211,102,.06)", border: "1px solid rgba(37,211,102,.12)", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#25D366", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>💬 {bn ? "WhatsApp মেসেজ" : "WhatsApp"}</div>
+                  <textarea className="inp" value={waMsg} onChange={e => setWaMsg(e.target.value)} placeholder={bn ? "মেসেজ লিখুন..." : "Type message..."} style={{ minHeight: 60, fontSize: 11, marginBottom: 8 }} />
+                  <a href={`https://wa.me/${(landlord.phone || "").replace(/[^0-9]/g, "").replace(/^0/, "88")}${waMsg ? `?text=${encodeURIComponent(waMsg)}` : ""}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="btn" style={{ display: "block", textAlign: "center", width: "100%", padding: "8px 0", background: "#25D366", color: "#fff", fontWeight: 700, fontSize: 12, borderRadius: 8, textDecoration: "none" }}>
+                    📩 {bn ? "WhatsApp এ পাঠান" : "Send via WhatsApp"}
+                  </a>
+                </div>
+
+                {/* 📞 Phone Call */}
+                <div style={{ background: "rgba(59,130,246,.06)", border: "1px solid rgba(59,130,246,.12)", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#60A5FA", marginBottom: 8 }}>📞 {bn ? "ফোনে কল করুন" : "Phone Call"}</div>
+                  <div style={{ textAlign: "center", padding: "12px 0" }}>
+                    <div style={{ fontSize: 28, marginBottom: 6 }}>📱</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 4 }}>{landlord.phone}</div>
+                  </div>
+                  <a href={`tel:${landlord.phone}`}
+                    className="btn" style={{ display: "block", textAlign: "center", width: "100%", padding: "8px 0", background: "#3B82F6", color: "#fff", fontWeight: 700, fontSize: 12, borderRadius: 8, textDecoration: "none" }}>
+                    📞 {bn ? "কল করুন" : "Call Now"}
+                  </a>
+                </div>
+              </div>
             </div>}
+          </div>}
+
+          {/* ═══ সারি ২: ইউনিট তথ্য + ভাড়া + সার্ভিস চার্জ + ইউটিলিটি ═══ */}
+          <div className="G2" style={{ padding: 18, marginBottom: 12, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${prop?.color || "#10B981"},transparent)` }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {/* কলাম ১: ইউনিট */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#475569", marginBottom: 6 }}>{bn ? "আমার ইউনিট" : "MY UNIT"}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>{unit?.unitNo}</div>
+                <div style={{ fontSize: 11, color: "#64748B" }}>{bn ? `${unit?.floor} তলা` : `Floor ${unit?.floor}`} • {prop?.name}</div>
+                <div style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>📍 {prop?.address}</div>
+                {me?.moveInDate && <div style={{ fontSize: 10, color: "#34D399", marginTop: 6, padding: "3px 8px", background: "rgba(16,185,129,.06)", borderRadius: 6, display: "inline-block" }}>📅 {bn ? "ভর্তি:" : "Since:"} {me.moveInDate}</div>}
+              </div>
+              {/* কলাম ২: ভাড়া + চার্জ */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#475569", marginBottom: 6 }}>{bn ? "মাসিক খরচ" : "MONTHLY COST"}</div>
+                {[
+                  { l: bn ? "বাড়ি ভাড়া" : "Rent", v: me?.rent, c: "#34D399", i: "🏠" },
+                  { l: bn ? "সার্ভিস চার্জ" : "Service", v: unit?.serviceCharge, c: "#A78BFA", i: "🔧" },
+                  { l: bn ? "গ্যাস বিল" : "Gas", v: unit?.gasBill, c: "#F97316", i: "🔥" },
+                ].filter(x => x.v > 0).map((x, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,.02)" }}>
+                  <span style={{ fontSize: 11, color: "#64748B" }}>{x.i} {x.l}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: x.c }}>৳{bn ? FM(x.v) : FE(x.v)}</span>
+                </div>)}
+                {(unit?.electricityRate || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+                  <span style={{ fontSize: 11, color: "#64748B" }}>⚡ {bn ? "বিদ্যুৎ" : "Electric"}</span>
+                  <span style={{ fontSize: 11, color: "#FBBF24" }}>৳{unit.electricityRate}/{bn ? "ইউনিট" : "unit"}</span>
+                </div>}
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.04)", display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8" }}>{bn ? "মোট (আনুমানিক)" : "Total (est.)"}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>৳{bn ? FM((me?.rent || 0) + (unit?.serviceCharge || 0) + (unit?.gasBill || 0)) : FE((me?.rent || 0) + (unit?.serviceCharge || 0) + (unit?.gasBill || 0))}+</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Quick Utility Bills */}
-          <div className="G" style={{ padding: 16, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700 }}>📄 {bn ? "ইউটিলিটি বিল" : "Utility Bills"}</h3>
-              <button className="btn bp bs" onClick={() => setModal("payUtil")}>➕ {bn ? "বিল দিন" : "Pay Bill"}</button>
+          {/* ═══ সারি ৩: হালনাগাদ বিল — মাস + প্রতিটি বিলের স্ট্যাটাস ═══ */}
+          <div className="G2" style={{ padding: 18, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700 }}>📋 {bn ? "হালনাগাদ বিল" : "Bill Status"}</h3>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#34D399", padding: "4px 10px", background: "rgba(16,185,129,.06)", borderRadius: 8 }}>{(bn ? MBN : MEN)[selM]} {selY}</div>
             </div>
-            {curUtilPays.length === 0 ? <div style={{ padding: 10, textAlign: "center", color: "#334155", fontSize: 12 }}>{bn ? "এই মাসে কোনো বিল দেওয়া হয়নি" : "No bills this month"}</div> :
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-                {curUtilPays.map(p => {
-                  const ut = UTIL_TYPES.find(u => u.k === p.type) || UTIL_TYPES[5];
-                  return <div key={p.id} style={{ padding: 10, borderRadius: 10, background: `${ut.c}08`, border: `1px solid ${ut.c}15`, textAlign: "center" }}>
-                    <div style={{ fontSize: 18 }}>{ut.i}</div>
-                    <div style={{ fontSize: 10, color: ut.c, fontWeight: 600 }}>{ut.l}</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", marginTop: 2 }}>৳{bn ? FM(p.amount) : FE(p.amount)}</div>
+
+            {(() => {
+              const billTypes = [
+                { k: "rent", l: bn ? "বাড়ি ভাড়া" : "Rent", i: "🏠", c: "#34D399", amount: me?.rent },
+                { k: "service", l: bn ? "সার্ভিস চার্জ" : "Service Charge", i: "🔧", c: "#A78BFA", amount: unit?.serviceCharge },
+                { k: "gas", l: bn ? "গ্যাস বিল" : "Gas Bill", i: "🔥", c: "#F97316", amount: unit?.gasBill },
+                { k: "electricity", l: bn ? "বিদ্যুৎ বিল" : "Electricity", i: "⚡", c: "#FBBF24", amount: null },
+                { k: "water", l: bn ? "পানি বিল" : "Water Bill", i: "💧", c: "#38BDF8", amount: null },
+                { k: "internet", l: bn ? "ইন্টারনেট" : "Internet", i: "🌐", c: "#34D399", amount: null },
+              ].filter(b => b.amount > 0 || b.k === "rent" || payments.some(p => p.type === b.k && p.monthKey === mk));
+
+              return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {billTypes.map(bt => {
+                  const paid = bt.k === "rent"
+                    ? rentPays.find(p => p.monthKey === mk)
+                    : payments.find(p => p.type === bt.k && p.monthKey === mk);
+                  const isPaid = !!paid;
+                  const paidAmt = paid ? Number(paid.amount) : 0;
+                  return <div key={bt.k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: isPaid ? "rgba(16,185,129,.03)" : "rgba(245,158,11,.03)", border: `1px solid ${isPaid ? "rgba(16,185,129,.1)" : "rgba(245,158,11,.1)"}` }}>
+                    <span style={{ fontSize: 18, width: 28, textAlign: "center" }}>{bt.i}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#CBD5E1" }}>{bt.l}</div>
+                      {bt.amount > 0 && <div style={{ fontSize: 10, color: "#475569" }}>৳{bn ? FM(bt.amount) : FE(bt.amount)}</div>}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      {isPaid ? <>
+                        <span className="badge bP" style={{ fontSize: 10 }}>✅ {bn ? "পেইড" : "Paid"}</span>
+                        <div style={{ fontSize: 10, color: "#34D399", fontWeight: 700, marginTop: 2 }}>৳{bn ? FM(paidAmt) : FE(paidAmt)}</div>
+                      </> : <span className="badge bD" style={{ fontSize: 10 }}>⏳ {bn ? "বাকি" : "Due"}</span>}
+                    </div>
                   </div>;
                 })}
-              </div>}
-          </div>
+              </div>;
+            })()}
 
-          {/* Landlord */}
-          {landlord && <div className="G" style={{ padding: 16, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#475569", marginBottom: 4 }}>🏠 {bn ? "বাড়িওয়ালা" : "Landlord"}</div>
-                <div style={{ fontWeight: 700, color: "#fff" }}>{landlord.name} • 📞 {landlord.phone}</div>
-              </div>
-              <button className="btn bg bs" onClick={() => setModal("sendNotice")}>📨 {bn ? "নোটিশ" : "Notice"}</button>
+            {/* Quick action buttons */}
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              {(!curRentPay || curRentPay.status !== "paid") && <button className="btn bp" style={{ flex: 1, fontSize: 12 }} onClick={() => setModal("payRent")}>💰 {bn ? "ভাড়া দিন" : "Pay Rent"}</button>}
+              <button className="btn bg" style={{ flex: 1, fontSize: 12 }} onClick={() => setModal("payUtil")}>📄 {bn ? "বিল দিন" : "Pay Bill"}</button>
             </div>
-          </div>}
+          </div>
         </>}
 
         {/* ═══ BILLS TAB ═══ */}
@@ -2062,7 +2163,7 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
 // ═══ MODALS ═══
 function AddPropModal({ bn, onSave, onClose }) {
-  const [f, sF] = useState({ name: "", address: "", location: "", floors: 5, unitsPerFloor: 4, unitType: "flat", color: "#10B981", defaultRent: "", defaultConditions: "", defaultBedrooms: "", defaultBathrooms: "" });
+  const [f, sF] = useState({ name: "", address: "", location: "", floors: 5, unitsPerFloor: 4, unitType: "flat", color: "#10B981", defaultRent: "", defaultConditions: "", defaultBedrooms: "", defaultBathrooms: "", defaultServiceCharge: "", electricityRate: "", defaultGasBill: "" });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => sF(o => ({ ...o, [k]: v }));
   const cols = ["#10B981", "#6366F1", "#F97316", "#EAB308", "#06B6D4", "#EC4899", "#3B82F6"];
@@ -2090,10 +2191,13 @@ function AddPropModal({ bn, onSave, onClose }) {
         <div style={{ fontSize: 11, fontWeight: 700, color: "#34D399", marginBottom: 8 }}>💰 {bn ? "ভাড়া ও তথ্য (সব ইউনিটে প্রযোজ্য)" : "Rent & Details (applies to all units)"}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div><label className="lbl">{bn ? "ভাড়া ৳/মাস" : "Rent ৳/mo"}</label><input className="inp" type="number" value={f.defaultRent} onChange={e => set("defaultRent", e.target.value)} placeholder="0" /></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            <div><label className="lbl">🛏️</label><input className="inp" type="number" value={f.defaultBedrooms} onChange={e => set("defaultBedrooms", e.target.value)} placeholder="0" /></div>
-            <div><label className="lbl">🚿</label><input className="inp" type="number" value={f.defaultBathrooms} onChange={e => set("defaultBathrooms", e.target.value)} placeholder="0" /></div>
-          </div>
+          <div><label className="lbl">{bn ? "সার্ভিস চার্জ ৳" : "Service ৳"}</label><input className="inp" type="number" value={f.defaultServiceCharge} onChange={e => set("defaultServiceCharge", e.target.value)} placeholder="0" /></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginTop: 8 }}>
+          <div><label className="lbl">⚡ {bn ? "৳/ইউনিট" : "৳/unit"}</label><input className="inp" type="number" step="0.01" value={f.electricityRate} onChange={e => set("electricityRate", e.target.value)} placeholder="8" /></div>
+          <div><label className="lbl">🔥 {bn ? "গ্যাস ৳" : "Gas ৳"}</label><input className="inp" type="number" value={f.defaultGasBill} onChange={e => set("defaultGasBill", e.target.value)} placeholder="0" /></div>
+          <div><label className="lbl">🛏️</label><input className="inp" type="number" value={f.defaultBedrooms} onChange={e => set("defaultBedrooms", e.target.value)} placeholder="0" /></div>
+          <div><label className="lbl">🚿</label><input className="inp" type="number" value={f.defaultBathrooms} onChange={e => set("defaultBathrooms", e.target.value)} placeholder="0" /></div>
         </div>
         <div style={{ marginTop: 8 }}><label className="lbl">📋 {bn ? "শর্ত / চুক্তি" : "Conditions"}</label><textarea className="inp" value={f.defaultConditions} onChange={e => set("defaultConditions", e.target.value)} placeholder={bn ? "যেমন: অগ্রিম ২ মাসের, পোষা প্রাণী নিষেধ..." : "e.g. 2 months advance, no pets..."} /></div>
       </div>
@@ -2110,7 +2214,7 @@ function AddPropModal({ bn, onSave, onClose }) {
 }
 
 function ManualAddTenantModal({ bn, units, properties, onSave, onClose }) {
-  const [f, sF] = useState({ name: "", phone: "", email: "", nid: "", members: 1, advance: "", moveInDate: new Date().toISOString().split("T")[0], notes: "" });
+  const [f, sF] = useState({ name: "", phone: "", email: "", nid: "", members: 1, advance: "", moveInDate: new Date().toISOString().split("T")[0], notes: "", permanentAddress: "" });
   const [unitId, setUnitId] = useState("");
   const [rent, setRent] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2140,6 +2244,7 @@ function ManualAddTenantModal({ bn, units, properties, onSave, onClose }) {
         <div><label className="lbl">{bn ? "ফোন" : "Phone"}</label><input className="inp" value={f.phone} onChange={e => set("phone", e.target.value)} placeholder="01XXXXXXXXX" /></div>
         <div><label className="lbl">NID</label><input className="inp" value={f.nid} onChange={e => set("nid", e.target.value)} /></div>
       </div>
+      <div><label className="lbl">🏡 {bn ? "স্থায়ী ঠিকানা" : "Permanent Address"}</label><input className="inp" value={f.permanentAddress} onChange={e => set("permanentAddress", e.target.value)} placeholder={bn ? "গ্রাম, উপজেলা, জেলা" : "Village, Upazila, District"} /></div>
 
       {/* Unit selection */}
       <div style={{ borderTop: "1px solid rgba(255,255,255,.04)", paddingTop: 10 }}>
