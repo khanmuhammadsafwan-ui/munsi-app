@@ -1746,7 +1746,19 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
         </div>}
       </div>
     </Bar>
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
+
+    {/* ═══ TOP NAV TABS (moved from bottom) ═══ */}
+    {me?.unitId && <div style={{ position: "sticky", top: 52, zIndex: 99, background: "rgba(6,11,22,.95)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,.04)", padding: "6px 0" }}>
+      <div style={{ maxWidth: 700, margin: "0 auto", display: "flex", justifyContent: "space-around", padding: "0 8px" }}>
+        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 14px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.1)" : "transparent", transition: "all .15s", position: "relative" }}>
+          <div style={{ fontSize: 16 }}>{t.i}</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", marginTop: 1 }}>{t.l}</div>
+          {t.badge > 0 && <span style={{ position: "absolute", top: 0, right: 2, width: 15, height: 15, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 8, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
+        </div>)}
+      </div>
+    </div>}
+
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 24px" }}>
       {!me?.unitId ? <div className="G2" style={{ padding: 50, textAlign: "center", animation: "fadeIn .4s" }}>
         <div style={{ fontSize: 52, marginBottom: 12 }}>🏠</div>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 6 }}>{bn ? "স্বাগতম!" : "Welcome!"}</h2>
@@ -1866,6 +1878,26 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
             </div>
 
             {(() => {
+              // Check if selected month is before move-in
+              const moveIn = me?.moveInDate;
+              let isBeforeMoveIn = false;
+              if (moveIn) {
+                const miDate = new Date(moveIn);
+                const miMonth = miDate.getMonth();
+                const miYear = miDate.getFullYear();
+                const selDate = new Date(selY, selM);
+                const miStart = new Date(miYear, miMonth);
+                isBeforeMoveIn = selDate < miStart;
+              }
+
+              if (isBeforeMoveIn) {
+                return <div style={{ padding: 30, textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.04)" }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🚫</div>
+                  <div style={{ fontWeight: 700, color: "#94A3B8", fontSize: 13, marginBottom: 4 }}>{bn ? "প্রযোজ্য নয়" : "Not Applicable"}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{bn ? `আপনি এই ইউনিটে এসেছেন ${moveIn} তারিখে। এর আগের মাসের বিল নেই।` : `You moved in on ${moveIn}. No bills before that.`}</div>
+                </div>;
+              }
+
               const billTypes = [
                 { k: "rent", l: bn ? "বাড়ি ভাড়া" : "Rent", i: "🏠", c: "#34D399", amount: me?.rent },
                 { k: "service", l: bn ? "সার্ভিস চার্জ" : "Service Charge", i: "🔧", c: "#A78BFA", amount: unit?.serviceCharge },
@@ -2140,17 +2172,6 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
       </div>}
     </div>
-
-    {/* ═══ BOTTOM TAB BAR ═══ */}
-    {me?.unitId && <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(6,11,22,.95)", backdropFilter: "blur(16px)", borderTop: "1px solid rgba(255,255,255,.04)", padding: "8px 0 12px", zIndex: 100 }}>
-      <div style={{ maxWidth: 700, margin: "0 auto", display: "flex", justifyContent: "space-around" }}>
-        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "4px 12px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.08)" : "transparent", transition: "all .15s", position: "relative" }}>
-          <div style={{ fontSize: 20 }}>{t.i}</div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", marginTop: 2 }}>{t.l}</div>
-          {t.badge > 0 && <span style={{ position: "absolute", top: 0, right: 4, width: 16, height: 16, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 8, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
-        </div>)}
-      </div>
-    </div>}
 
     {/* ═══ MODALS ═══ */}
     {modal === "payRent" && me && <PayModal bn={bn} tenant={me} mk={mk} payType="rent"
