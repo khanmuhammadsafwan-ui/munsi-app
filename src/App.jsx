@@ -1710,11 +1710,11 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
   return <div>
     <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" onLogout={onLogout}>
       {/* ═══ NAV TABS inline ═══ */}
-      {me?.unitId && <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "4px 10px", borderRadius: 8, background: tab === t.k ? "rgba(16,185,129,.12)" : "transparent", transition: "all .15s", position: "relative" }}>
-          <div style={{ fontSize: 14 }}>{t.i}</div>
-          <div style={{ fontSize: 8, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", lineHeight: 1 }}>{t.l}</div>
-          {t.badge > 0 && <span style={{ position: "absolute", top: -2, right: 0, width: 14, height: 14, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 7, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
+      {me?.unitId && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "5px 14px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.12)" : "transparent", transition: "all .15s", position: "relative" }}>
+          <div style={{ fontSize: 18 }}>{t.i}</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", marginTop: 2 }}>{t.l}</div>
+          {t.badge > 0 && <span style={{ position: "absolute", top: -2, right: 0, width: 15, height: 15, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 7, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
         </div>)}
       </div>}
       {/* 🔔 Notification Bell */}
@@ -1861,15 +1861,20 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
           {/* ═══ সারি ৩: হালনাগাদ বিল — মাস + প্রতিটি বিলের স্ট্যাটাস ═══ */}
           {(() => {
-            // Check if selected month is before move-in
+            // Check if selected month is before move-in or in the future
             const moveIn = me?.moveInDate;
             let isBeforeMoveIn = false;
+            let isFutureMonth = false;
+            const now = new Date();
+            const curMonth = new Date(now.getFullYear(), now.getMonth());
+            const selDate = new Date(selY, selM);
+
             if (moveIn) {
               const miDate = new Date(moveIn);
-              const selDate = new Date(selY, selM);
               const miStart = new Date(miDate.getFullYear(), miDate.getMonth());
               isBeforeMoveIn = selDate < miStart;
             }
+            isFutureMonth = selDate > curMonth;
 
             return <div className="G2" style={{ padding: 18, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -1881,10 +1886,13 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
               </div>
             </div>
 
-            {isBeforeMoveIn ? <div style={{ padding: 30, textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.04)" }}>
+            {(isBeforeMoveIn || isFutureMonth) ? <div style={{ padding: 30, textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.04)" }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>🚫</div>
                 <div style={{ fontWeight: 700, color: "#94A3B8", fontSize: 13, marginBottom: 4 }}>{bn ? "প্রযোজ্য নয়" : "Not Applicable"}</div>
-                <div style={{ fontSize: 11, color: "#475569" }}>{bn ? `আপনি এই ইউনিটে এসেছেন ${moveIn} তারিখে। এর আগের মাসের বিল নেই।` : `You moved in on ${moveIn}. No bills before that.`}</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>{isBeforeMoveIn
+                  ? (bn ? `আপনি এই ইউনিটে এসেছেন ${moveIn} তারিখে। এর আগের মাসের বিল নেই।` : `You moved in on ${moveIn}. No bills before that.`)
+                  : (bn ? "এই মাস এখনো আসেনি। অগ্রিম মাসের বিল প্রযোজ্য নয়।" : "This month hasn't arrived yet.")
+                }</div>
               </div>
             : <>
               {(() => {
