@@ -363,7 +363,7 @@ export default function App() {
       {screen === "tenant" && profile?.role === "tenant" && (
         <TenantPanel me={myTenant} landlord={myLandlord} units={units} properties={properties} payments={payments}
           bn={bn} lang={lang} setLang={setLang} onLogout={handleLogout}
-          recordPayment={handlePayment} selM={selM} selY={selY} mk={mk}
+          recordPayment={handlePayment} selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk}
           onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           onSendNotice={handleSendNotice} notices={notices}
           onUpdateNoticeStatus={handleUpdateNoticeStatus}
@@ -1654,7 +1654,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (d) => { await onCreateAgreement(d); setModal(null); }} onClose={() => setModal(null)} />}
   </div>;
 }
-function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, selY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements }) {
+function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, setSelM, selY, setSelY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("home");
   const [selPay, setSelPay] = useState(null);
@@ -1708,12 +1708,16 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
   ];
 
   return <div>
-    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" user={me?.name} onLogout={onLogout}>
+    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" onLogout={onLogout}>
       {/* 🔔 Notification Bell */}
       <div onClick={() => setTab("notices")} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
         <span style={{ fontSize: 18 }}>🔔</span>
         {totalAlerts > 0 && <span style={{ position: "absolute", top: 0, right: 2, minWidth: 18, height: 18, borderRadius: 9, background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", animation: "pulse 2s infinite" }}>{totalAlerts}</span>}
       </div>
+      {/* 📅 Month Selector */}
+      <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 11 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
+        {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
+      </select>
       {/* 👤 User Profile Dropdown */}
       <div style={{ position: "relative" }}>
         <div onClick={() => setShowProfile(!showProfile)} style={{ cursor: "pointer", padding: "4px 10px", background: showProfile ? "rgba(16,185,129,.08)" : "rgba(255,255,255,.025)", borderRadius: 8, fontSize: 11, color: "#64748B", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1854,7 +1858,11 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
           <div className="G2" style={{ padding: 18, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <h3 style={{ fontSize: 14, fontWeight: 700 }}>📋 {bn ? "হালনাগাদ বিল" : "Bill Status"}</h3>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#34D399", padding: "4px 10px", background: "rgba(16,185,129,.06)", borderRadius: 8 }}>{(bn ? MBN : MEN)[selM]} {selY}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button onClick={() => { const nm = selM === 0 ? 11 : selM - 1; const ny = selM === 0 ? selY - 1 : selY; setSelM(nm); setSelY(ny); }} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 6, color: "#64748B", cursor: "pointer", padding: "4px 8px", fontSize: 12 }}>◀</button>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#34D399", padding: "4px 10px", background: "rgba(16,185,129,.06)", borderRadius: 8, minWidth: 100, textAlign: "center" }}>{(bn ? MBN : MEN)[selM]} {selY}</div>
+                <button onClick={() => { const nm = selM === 11 ? 0 : selM + 1; const ny = selM === 11 ? selY + 1 : selY; setSelM(nm); setSelY(ny); }} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 6, color: "#64748B", cursor: "pointer", padding: "4px 8px", fontSize: 12 }}>▶</button>
+              </div>
             </div>
 
             {(() => {
