@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { auth, googleProvider } from "./firebase";
+import { auth, googleProvider, setupRecaptcha, sendPhoneOTP } from "./firebase";
 import {
   signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  onAuthStateChanged, signOut, updateProfile
+  onAuthStateChanged, signOut, updateProfile, linkWithCredential, EmailAuthProvider
 } from "firebase/auth";
 import * as DB from "./db";
 
@@ -159,13 +159,19 @@ export default function App() {
     }
   };
 
-  // ─── EMAIL SIGN IN / REGISTER ───
-  const emailAuth = async (email, password, isNew) => {
+  // ─── EMAIL / PHONE SIGN IN / REGISTER ───
+  const emailAuth = async (emailOrPhone, password, isNew) => {
     try {
+      // Auto-detect phone number: if starts with 0 and all digits, append @munsi.app
+      let loginEmail = emailOrPhone;
+      const cleaned = emailOrPhone.replace(/[^0-9]/g, "");
+      if (/^0[0-9]{9,10}$/.test(cleaned) || /^880[0-9]{10}$/.test(cleaned)) {
+        loginEmail = cleaned + "@munsi.app";
+      }
       if (isNew) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        await createUserWithEmailAndPassword(auth, loginEmail, password);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth, loginEmail, password);
       }
       return true;
     } catch (e) {
@@ -434,16 +440,88 @@ function SplashScreen() {
 
 // ═══ WELCOME / LOGIN ═══
 function WelcomeScreen({ bn, lang, setLang, onGoogle, onEmail, onSetScreen }) {
-  const [mode, setMode] = useState("main"); // main, email-login, email-reg
+  const [mode, setMode] = useState("main"); // main, email-login, phone-reg, phone-login-wa
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [pass2, setPass2] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [confirmResult, setConfirmResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const handleEmail = async (isNew) => {
     if (!email || !pass) return;
     setBusy(true);
     await onEmail(email, pass, isNew);
     setBusy(false);
+  };
+
+  // Send OTP via Firebase Phone Auth
+  const handleSendOTP = async () => {
+    if (!phone || phone.length < 10) { setError(bn ? "সঠিক মোবাইল নম্বর দিন" : "Enter valid phone number"); return; }
+    setBusy(true); setError("");
+    try {
+      const recaptcha = setupRecaptcha("recaptcha-container");
+      const result = await sendPhoneOTP(phone);
+      setConfirmResult(result);
+      setOtpSent(true);
+    } catch (e) {
+      console.error(e);
+      setError(e.code === "auth/too-many-requests" 
+        ? (bn ? "অনেক চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।" : "Too many attempts. Try later.")
+        : (bn ? "OTP পাঠাতে ব্যর্থ: " + e.message : "Failed to send OTP: " + e.message));
+    }
+    setBusy(false);
+  };
+
+  // Verify OTP
+  const handleVerifyOTP = async () => {
+    if (!otp || otp.length < 4) { setError(bn ? "OTP দিন" : "Enter OTP"); return; }
+    setBusy(true); setError("");
+    try {
+      if (mode === "phone-login-wa") {
+        // WhatsApp/Phone direct login — OTP verification signs in directly
+        await confirmResult.confirm(otp);
+        // Firebase auto-logs in after phone verification
+      } else {
+        // Registration flow — verify OTP, then create with email+password
+        const credential = await confirmResult.confirm(otp);
+        setOtpVerified(true);
+        // Phone user is now signed in temporarily, we'll link email/password
+      }
+    } catch (e) {
+      setError(bn ? "ভুল OTP! আবার চেষ্টা করুন।" : "Wrong OTP! Try again.");
+    }
+    setBusy(false);
+  };
+
+  // Complete registration: Link email/password to phone-verified account
+  const handlePhoneRegister = async () => {
+    if (!pass || pass.length < 6) { setError(bn ? "পাসওয়ার্ড কমপক্ষে ৬ অক্ষর" : "Password min 6 characters"); return; }
+    if (pass !== pass2) { setError(bn ? "পাসওয়ার্ড মিলছে না" : "Passwords don't match"); return; }
+    setBusy(true); setError("");
+    try {
+      // Create a fake email from phone number for email/password login later
+      const fakeEmail = phone.replace(/[^0-9]/g, "") + "@munsi.app";
+      const emailCred = EmailAuthProvider.credential(fakeEmail, pass);
+      await linkWithCredential(auth.currentUser, emailCred);
+      // Done — user is now logged in with phone + has email/password linked
+    } catch (e) {
+      if (e.code === "auth/email-already-in-use") {
+        setError(bn ? "এই নম্বর দিয়ে আগেই অ্যাকাউন্ট আছে!" : "Account already exists with this number!");
+      } else {
+        setError(e.message);
+      }
+    }
+    setBusy(false);
+  };
+
+  const resetState = () => {
+    setPhone(""); setOtp(""); setOtpSent(false); setOtpVerified(false);
+    setConfirmResult(null); setPass(""); setPass2(""); setEmail(""); setError("");
   };
 
   return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "radial-gradient(ellipse at 20% 20%,rgba(16,185,129,.05) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(59,130,246,.05) 0%,transparent 50%),#060B16" }}>
@@ -454,33 +532,114 @@ function WelcomeScreen({ bn, lang, setLang, onGoogle, onEmail, onSetScreen }) {
         <div style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>{bn ? "আপনার ডিজিটাল হিসাবরক্ষক" : "Your Digital Rent Keeper"}</div>
       </div>
 
+      {/* Invisible reCAPTCHA container */}
+      <div id="recaptcha-container"></div>
+
+      {/* Error display */}
+      {error && <div style={{ padding: "10px 14px", marginBottom: 12, borderRadius: 10, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.15)", color: "#FCA5A5", fontSize: 12, textAlign: "center" }}>⚠️ {error}</div>}
+
+      {/* ═══ MAIN SCREEN ═══ */}
       {mode === "main" && <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* Google Sign In */}
         <button className="gbtn" onClick={onGoogle}>
           <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
           {bn ? "Google দিয়ে চালিয়ে যান" : "Continue with Google"}
         </button>
 
+        {/* WhatsApp / Phone Login */}
+        <button className="btn" style={{ width: "100%", padding: 14, borderRadius: 14, fontSize: 14, background: "rgba(37,211,102,.08)", border: "1px solid rgba(37,211,102,.2)", color: "#25D366" }} onClick={() => { resetState(); setMode("phone-login-wa"); }}>
+          📱 {bn ? "মোবাইল নম্বর দিয়ে লগইন" : "Continue with Phone"}
+        </button>
+
         <div style={{ textAlign: "center", margin: "4px 0", color: "#334155", fontSize: 12 }}>— {bn ? "অথবা" : "or"} —</div>
 
-        <button className="btn bg" style={{ width: "100%", padding: 14, borderRadius: 14, fontSize: 14 }} onClick={() => setMode("email-login")}>
-          ✉️ {bn ? "ইমেইল দিয়ে লগইন" : "Login with Email"}
-        </button>
-        <button className="btn bg" style={{ width: "100%", padding: 14, borderRadius: 14, fontSize: 14 }} onClick={() => setMode("email-reg")}>
+        <button className="btn bg" style={{ width: "100%", padding: 14, borderRadius: 14, fontSize: 14 }} onClick={() => { resetState(); setMode("phone-reg"); }}>
           📝 {bn ? "নতুন অ্যাকাউন্ট তৈরি" : "Create Account"}
         </button>
       </div>}
 
-      {(mode === "email-login" || mode === "email-reg") && <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* ═══ PHONE LOGIN (WhatsApp/Phone) ═══ */}
+      {mode === "phone-login-wa" && <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff", textAlign: "center" }}>
-          {mode === "email-login" ? (bn ? "ইমেইল লগইন" : "Email Login") : (bn ? "নতুন অ্যাকাউন্ট" : "Create Account")}
+          📱 {bn ? "মোবাইল দিয়ে লগইন" : "Phone Login"}
         </h3>
-        <div><label className="lbl">{bn ? "ইমেইল" : "Email"}</label><input className="inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@email.com" /></div>
-        <div><label className="lbl">{bn ? "পাসওয়ার্ড" : "Password"}</label><input className="inp" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder={bn ? "কমপক্ষে ৬ অক্ষর" : "Min 6 characters"} onKeyDown={e => e.key === "Enter" && handleEmail(mode === "email-reg")} /></div>
-        <button className="btn bp" style={{ width: "100%", padding: 14, fontSize: 15 }} onClick={() => handleEmail(mode === "email-reg")} disabled={busy}>
-          {busy ? "⏳" : mode === "email-login" ? (bn ? "লগইন →" : "Login →") : (bn ? "অ্যাকাউন্ট তৈরি →" : "Create →")}
-        </button>
-        <button className="btn bg bs" onClick={() => setMode("main")} style={{ alignSelf: "center" }}>← {bn ? "পিছনে" : "Back"}</button>
+
+        {!otpSent ? <>
+          <div><label className="lbl">{bn ? "মোবাইল নম্বর" : "Mobile Number"}</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 13, color: "#64748B", padding: "10px 8px", background: "rgba(255,255,255,.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,.06)" }}>🇧🇩 +88</span>
+              <input className="inp" style={{ flex: 1 }} type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" maxLength={11} />
+            </div>
+          </div>
+          <button className="btn bp" style={{ width: "100%", padding: 14, fontSize: 15 }} onClick={handleSendOTP} disabled={busy}>
+            {busy ? "⏳ OTP পাঠানো হচ্ছে..." : (bn ? "📩 OTP পাঠান" : "📩 Send OTP")}
+          </button>
+        </> : <>
+          <div style={{ padding: 12, borderRadius: 10, background: "rgba(37,211,102,.06)", border: "1px solid rgba(37,211,102,.12)", textAlign: "center", fontSize: 12, color: "#25D366" }}>
+            ✅ {bn ? `${phone} নম্বরে OTP পাঠানো হয়েছে` : `OTP sent to ${phone}`}
+          </div>
+          <div><label className="lbl">OTP</label>
+            <input className="inp" type="text" value={otp} onChange={e => setOtp(e.target.value)} placeholder="••••••" maxLength={6}
+              style={{ textAlign: "center", fontSize: 22, letterSpacing: 8, fontFamily: "monospace" }} onKeyDown={e => e.key === "Enter" && handleVerifyOTP()} />
+          </div>
+          <button className="btn bp" style={{ width: "100%", padding: 14, fontSize: 15 }} onClick={handleVerifyOTP} disabled={busy}>
+            {busy ? "⏳" : (bn ? "✓ যাচাই করুন" : "✓ Verify & Login")}
+          </button>
+          <button className="btn bg bs" onClick={() => { setOtpSent(false); setOtp(""); setConfirmResult(null); }} style={{ alignSelf: "center", fontSize: 11 }}>🔄 {bn ? "আবার পাঠান" : "Resend OTP"}</button>
+        </>}
+        <button className="btn bg bs" onClick={() => { resetState(); setMode("main"); }} style={{ alignSelf: "center" }}>← {bn ? "পিছনে" : "Back"}</button>
+      </div>}
+
+      {/* ═══ PHONE REGISTRATION (New Account) ═══ */}
+      {mode === "phone-reg" && <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff", textAlign: "center" }}>
+          📝 {bn ? "নতুন অ্যাকাউন্ট" : "Create Account"}
+        </h3>
+
+        {/* Step 1: Phone + OTP */}
+        {!otpVerified ? <>
+          {!otpSent ? <>
+            <div><label className="lbl">{bn ? "মোবাইল নম্বর" : "Mobile Number"}</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 13, color: "#64748B", padding: "10px 8px", background: "rgba(255,255,255,.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,.06)" }}>🇧🇩 +88</span>
+                <input className="inp" style={{ flex: 1 }} type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" maxLength={11} />
+              </div>
+            </div>
+            <button className="btn bp" style={{ width: "100%", padding: 14, fontSize: 15 }} onClick={handleSendOTP} disabled={busy}>
+              {busy ? "⏳ OTP পাঠানো হচ্ছে..." : (bn ? "📩 OTP পাঠান" : "📩 Send OTP")}
+            </button>
+          </> : <>
+            <div style={{ padding: 12, borderRadius: 10, background: "rgba(37,211,102,.06)", border: "1px solid rgba(37,211,102,.12)", textAlign: "center", fontSize: 12, color: "#25D366" }}>
+              ✅ {bn ? `${phone} নম্বরে OTP পাঠানো হয়েছে` : `OTP sent to ${phone}`}
+            </div>
+            <div><label className="lbl">OTP</label>
+              <input className="inp" type="text" value={otp} onChange={e => setOtp(e.target.value)} placeholder="••••••" maxLength={6}
+                style={{ textAlign: "center", fontSize: 22, letterSpacing: 8, fontFamily: "monospace" }} onKeyDown={e => e.key === "Enter" && handleVerifyOTP()} />
+            </div>
+            <button className="btn bp" style={{ width: "100%", padding: 14, fontSize: 15 }} onClick={handleVerifyOTP} disabled={busy}>
+              {busy ? "⏳" : (bn ? "✓ OTP যাচাই করুন" : "✓ Verify OTP")}
+            </button>
+            <button className="btn bg bs" onClick={() => { setOtpSent(false); setOtp(""); setConfirmResult(null); }} style={{ alignSelf: "center", fontSize: 11 }}>🔄 {bn ? "আবার পাঠান" : "Resend OTP"}</button>
+          </>}
+        </> :
+        /* Step 2: Set Password (after OTP verified) */
+        <>
+          <div style={{ padding: 12, borderRadius: 10, background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.12)", textAlign: "center", fontSize: 12, color: "#34D399" }}>
+            ✅ {bn ? `${phone} নম্বর যাচাই সম্পন্ন!` : `${phone} verified!`}
+          </div>
+          <div><label className="lbl">{bn ? "পাসওয়ার্ড সেট করুন" : "Set Password"}</label>
+            <input className="inp" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder={bn ? "কমপক্ষে ৬ অক্ষর" : "Min 6 characters"} />
+          </div>
+          <div><label className="lbl">{bn ? "পাসওয়ার্ড নিশ্চিত করুন" : "Confirm Password"}</label>
+            <input className="inp" type="password" value={pass2} onChange={e => setPass2(e.target.value)} placeholder={bn ? "আবার পাসওয়ার্ড দিন" : "Re-enter password"} onKeyDown={e => e.key === "Enter" && handlePhoneRegister()} />
+          </div>
+          {pass && pass2 && pass === pass2 && <div style={{ fontSize: 11, color: "#34D399", textAlign: "center" }}>✅ {bn ? "পাসওয়ার্ড মিলেছে" : "Passwords match"}</div>}
+          {pass && pass2 && pass !== pass2 && <div style={{ fontSize: 11, color: "#EF4444", textAlign: "center" }}>❌ {bn ? "পাসওয়ার্ড মিলছে না" : "Passwords don't match"}</div>}
+          <button className="btn bp" style={{ width: "100%", padding: 14, fontSize: 15 }} onClick={handlePhoneRegister} disabled={busy}>
+            {busy ? "⏳" : (bn ? "✓ অ্যাকাউন্ট তৈরি করুন →" : "✓ Create Account →")}
+          </button>
+        </>}
+
+        <button className="btn bg bs" onClick={() => { resetState(); setMode("main"); }} style={{ alignSelf: "center" }}>← {bn ? "পিছনে" : "Back"}</button>
       </div>}
 
       <div style={{ textAlign: "center", marginTop: 20 }}>
