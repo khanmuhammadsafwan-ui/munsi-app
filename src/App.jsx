@@ -64,6 +64,7 @@ export default function App() {
   const [notices, setNotices] = useState([]);
   const [agreements, setAgreements] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [meters, setMeters] = useState([]);
   const noticeUnsubRef = useRef(null);
 
   const notify = (m) => { setToast(m); setTimeout(() => setToast(null), 2800); };
@@ -123,12 +124,14 @@ export default function App() {
     setProperties(p);
     setUnits(u);
     setPayments(pay);
-    const [agrs, exps] = await Promise.all([
+    const [agrs, exps, mtrs] = await Promise.all([
       DB.getAgreementsByLandlord(uid),
       DB.getExpensesByLandlord(uid),
+      DB.getMeterReadingsByLandlord(uid),
     ]);
     setAgreements(agrs);
     setExpenses(exps);
+    setMeters(mtrs);
   };
 
   const loadTenantData = async (uid) => {
@@ -148,6 +151,11 @@ export default function App() {
     setUnits(allU);
     setProperties(allP);
     setAgreements(agrs);
+    // Load meter readings for tenant's unit
+    if (t?.unitId) {
+      const mtrs = await DB.getMeterReadingsByUnit(t.unitId);
+      setMeters(mtrs);
+    }
   };
 
   const loadAdminData = async () => {
@@ -341,6 +349,22 @@ export default function App() {
   const handleDeleteExpense = async (id) => {
     try { await DB.deleteExpense(id); await refresh(); notify(bn ? "✓ মুছে ফেলা হয়েছে" : "✓ Deleted"); } catch (e) { notify("❌ " + e.message); }
   };
+  // Move-out with settlement
+  const handleMoveOut = async (tenantId, settlement) => {
+    try { await DB.moveOutTenant(tenantId, settlement); await refresh(); notify(bn ? "✓ Move-out সম্পন্ন" : "✓ Move-out complete"); } catch (e) { notify("❌ " + e.message); }
+  };
+  // Meter reading
+  const handleAddMeterReading = async (data) => {
+    try { await DB.addMeterReading({ ...data, landlordId: user.uid }); await refresh(); notify(bn ? "✓ মিটার রিডিং যোগ" : "✓ Meter reading added"); } catch (e) { notify("❌ " + e.message); }
+  };
+  // Update deposit
+  const handleUpdateDeposit = async (tenantId, amount, note) => {
+    try { await DB.updateTenantDeposit(tenantId, amount, note); await refresh(); notify(bn ? "✓ অগ্রিম আপডেট" : "✓ Deposit updated"); } catch (e) { notify("❌ " + e.message); }
+  };
+  // Update landlord payment info
+  const handleUpdateLandlordProfile = async (data) => {
+    try { await DB.updateLandlordProfile(user.uid, data); await refresh(); notify(bn ? "✓ আপডেট হয়েছে" : "✓ Updated"); } catch (e) { notify("❌ " + e.message); }
+  };
 
   const handleLogout = async () => { await signOut(auth); };
 
@@ -377,7 +401,8 @@ export default function App() {
           onReplyNotice={handleReplyNotice} onMarkReplyRead={handleMarkReplyRead}
           agreements={agreements} onCreateAgreement={handleCreateAgreement}
           expenses={expenses} onAddExpense={handleAddExpense} onDeleteExpense={handleDeleteExpense}
-          onRentChange={handleRentChange}
+          onRentChange={handleRentChange} meters={meters} onAddMeterReading={handleAddMeterReading}
+          onMoveOut={handleMoveOut} onUpdateDeposit={handleUpdateDeposit} onUpdateProfile={handleUpdateLandlordProfile}
           selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={() => loadLandlordData(user.uid)} />
       )}
 
@@ -390,7 +415,7 @@ export default function App() {
           onUpdateNoticeStatus={handleUpdateNoticeStatus}
           onMarkNoticeRead={handleMarkNoticeRead}
           onReplyNotice={handleReplyNotice} onMarkReplyRead={handleMarkReplyRead}
-          agreements={agreements} />
+          agreements={agreements} meters={meters} />
       )}
     </div>
   );
@@ -1091,7 +1116,7 @@ function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setS
 }
 
 // ═══ LANDLORD PANEL ═══
-function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements, onCreateAgreement, expenses, onAddExpense, onDeleteExpense, onRentChange, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, setLang, onLogout, addProperty, assignTenant, unassignTenant, recordPayment, manualAddTenant, onDeletePayment, onEditPayment, notices, onSendNotice, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements, onCreateAgreement, expenses, onAddExpense, onDeleteExpense, onRentChange, meters, onAddMeterReading, onMoveOut, onUpdateDeposit, onUpdateProfile, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [selProp, setSelProp] = useState(null);
   const [selFloor, setSelFloor] = useState(null);
@@ -1150,6 +1175,10 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
 
   return <div>
     <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "বাড়িওয়ালা" : "LANDLORD"} icon="🏠" user={me?.name} onLogout={onLogout} onRefresh={onRefresh}>
+      {/* Payment Info */}
+      <div onClick={() => setModal("paymentInfo")} style={{ cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: "transparent" }} title={bn ? "পেমেন্ট তথ্য" : "Payment Info"}>
+        <span style={{ fontSize: 18 }}>💳</span>
+      </div>
       {/* Notification bell */}
       <div onClick={() => { setTab2("notices"); setSelNotice(null); }} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab2 === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
         <span style={{ fontSize: 18 }}>📨</span>
@@ -1179,6 +1208,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       <div style={{ display: "flex", gap: 4, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
         {[{ k: "properties", l: bn ? "🏘️ বাড়ি" : "🏘️ Properties" },
           { k: "payments", l: bn ? "💰 পেমেন্ট" : "💰 Payments" },
+          { k: "meters", l: bn ? "⚡ মিটার" : "⚡ Meters" },
           { k: "analytics", l: bn ? "📊 বিশ্লেষণ" : "📊 Analytics" },
           { k: "expenses", l: bn ? "🧾 খরচ" : "🧾 Expenses" },
           { k: "agreements", l: bn ? "📜 চুক্তি" : "📜 Agreements" },
@@ -1319,6 +1349,44 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
             </div>;
           })}
         </div>}
+      </div>}
+
+      {/* ═══ METER READINGS TAB ═══ */}
+      {tab2 === "meters" && <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>⚡ {bn ? "মিটার রিডিং" : "Meter Readings"}</h3>
+          <button className="btn bp" onClick={() => setModal("addMeter")}>+ {bn ? "রিডিং যোগ" : "Add Reading"}</button>
+        </div>
+
+        {/* Latest readings by unit */}
+        {units.filter(u => !u.isVacant).map(u => {
+          const t = tenants.find(x => x.unitId === u.id);
+          const uMeters = (meters||[]).filter(m => m.unitId === u.id).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+          const latest = uMeters[0];
+          const p = properties.find(x => x.id === u.propertyId);
+          return <div key={u.id} className="G" style={{ padding: 16, marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{u.unitNo} • {p?.name}</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>{t?.name || (bn ? "খালি" : "Vacant")}</div>
+              </div>
+              {latest && <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: "#475569" }}>{bn ? "শেষ রিডিং" : "Last reading"}</div>
+                <div style={{ fontWeight: 700, color: "#FBBF24", fontSize: 14 }}>{latest.currentReading}</div>
+              </div>}
+            </div>
+            {uMeters.length > 0 ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {uMeters.slice(0, 4).map(m => <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,.02)", fontSize: 11 }}>
+                <span style={{ color: "#64748B" }}>{m.monthKey || m.createdAt?.split("T")[0]}</span>
+                <span>{m.prevReading} → <strong style={{ color: "#FBBF24" }}>{m.currentReading}</strong></span>
+                <span style={{ color: "#34D399", fontWeight: 700 }}>{m.currentReading - m.prevReading} {bn ? "ইউনিট" : "units"}</span>
+                <span style={{ color: "#fff", fontWeight: 700 }}>৳{bn ? FM((m.currentReading - m.prevReading) * (u.electricityRate || 0)) : FE((m.currentReading - m.prevReading) * (u.electricityRate || 0))}</span>
+              </div>)}
+            </div> : <div style={{ textAlign: "center", padding: 16, color: "#334155", fontSize: 12 }}>
+              {bn ? "এখনো কোনো রিডিং নেই" : "No readings yet"}
+            </div>}
+          </div>;
+        })}
       </div>}
 
       {/* ═══ ANALYTICS TAB (Feature #4) ═══ */}
@@ -1805,6 +1873,26 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
           </div>)}
         </div>}
 
+        {/* Deposit / Advance Tracking */}
+        <div style={{ marginBottom: 14, padding: 12, background: "rgba(59,130,246,.04)", borderRadius: 10, border: "1px solid rgba(59,130,246,.1)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#60A5FA" }}>💵 {bn ? "জামানত / অগ্রিম" : "Security Deposit"}</div>
+            <button className="btn bg bs" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => {
+              const amt = prompt(bn ? "নতুন অগ্রিম পরিমাণ:" : "New deposit amount:", edit.advance || 0);
+              if (amt !== null && Number(amt) !== edit.advance) {
+                const note = prompt(bn ? "নোট:" : "Note:", bn ? "অগ্রিম আপডেট" : "Deposit update");
+                if (note !== null) onUpdateDeposit(edit.id, Number(amt), note);
+              }
+            }}>✏️</button>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#60A5FA" }}>৳{bn ? FM(edit.advance || 0) : FE(edit.advance || 0)}</div>
+          {edit.depositHistory?.length > 0 && <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.04)" }}>
+            {edit.depositHistory.slice(-3).reverse().map((h, i) => <div key={i} style={{ fontSize: 10, color: "#64748B", padding: "2px 0" }}>
+              {h.date?.split("T")[0]} — ৳{h.prev || 0} → ৳{h.amount} {h.note && `(${h.note})`}
+            </div>)}
+          </div>}
+        </div>
+
         <div style={{ display: "flex", gap: 6 }}>
           <button className="btn bp" style={{ flex: 1 }} onClick={() => setModal("pay")}>💰 {bn ? "আদায়" : "Collect"}</button>
           <button className="btn bg" style={{ flex: 1 }} onClick={() => {
@@ -1814,7 +1902,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
               if (reason !== null) onRentChange(edit.id, Number(nr), reason);
             }
           }}>📝 {bn ? "ভাড়া বদল" : "Change Rent"}</button>
-          <button className="btn bd" style={{ flex: 0 }} onClick={() => { if (confirm(bn ? "নিশ্চিত?" : "Sure?")) { unassignTenant(edit.id); setModal(null); } }}>🗑️</button>
+          <button className="btn bd" style={{ flex: 0 }} onClick={() => { setEdit(edit); setModal("moveOut"); }}>🚪</button>
         </div>
       </div>
     </div>}
@@ -1826,9 +1914,39 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (d) => { await onAddExpense(d); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "addAgreement" && <AddAgreementModal bn={bn} tenants={tenants.filter(t => t.unitId)} units={units} properties={properties} landlordId={me?.id}
       onSave={async (d) => { await onCreateAgreement(d); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal === "addMeter" && <MeterReadingModal bn={bn} units={units} tenants={tenants} properties={properties} meters={meters}
+      onSave={async (d) => { await onAddMeterReading(d); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal === "moveOut" && edit && <MoveOutModal bn={bn} tenant={edit} payments={payments}
+      onMoveOut={async (tid, s) => { await onMoveOut(tid, s); setModal(null); setEdit(null); }} onClose={() => setModal(null)} />}
+    {modal === "paymentInfo" && <div className="ov" onClick={() => setModal(null)}><div className="mdl" onClick={e => e.stopPropagation()}>
+      <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>💳 {bn ? "পেমেন্ট তথ্য" : "Payment Info"}</h2>
+      <p style={{ fontSize: 11, color: "#475569", marginBottom: 14 }}>{bn ? "ভাড়াটিয়ারা এই তথ্য দেখতে পাবে" : "Tenants will see this info"}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div><label className="lbl">bKash {bn ? "নম্বর" : "Number"}</label>
+          <input className="inp" defaultValue={me?.bkashNo || ""} placeholder="01XXXXXXXXX" id="pi-bkash" /></div>
+        <div><label className="lbl">Nagad {bn ? "নম্বর" : "Number"}</label>
+          <input className="inp" defaultValue={me?.nagadNo || ""} placeholder="01XXXXXXXXX" id="pi-nagad" /></div>
+        <div><label className="lbl">Rocket {bn ? "নম্বর" : "Number"}</label>
+          <input className="inp" defaultValue={me?.rocketNo || ""} placeholder="01XXXXXXXXX" id="pi-rocket" /></div>
+        <div><label className="lbl">{bn ? "ব্যাংক তথ্য" : "Bank Details"}</label>
+          <textarea className="inp" defaultValue={me?.bankInfo || ""} placeholder={bn ? "ব্যাংক নাম, হিসাব নং..." : "Bank name, account no..."} id="pi-bank" style={{ minHeight: 50 }} /></div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+        <button className="btn bg" style={{ flex: 1 }} onClick={() => setModal(null)}>{bn ? "বাতিল" : "Cancel"}</button>
+        <button className="btn bp" style={{ flex: 1 }} onClick={() => {
+          onUpdateProfile({
+            bkashNo: document.getElementById("pi-bkash").value,
+            nagadNo: document.getElementById("pi-nagad").value,
+            rocketNo: document.getElementById("pi-rocket").value,
+            bankInfo: document.getElementById("pi-bank").value,
+          });
+          setModal(null);
+        }}>✓ {bn ? "সেভ করুন" : "Save"}</button>
+      </div>
+    </div></div>}
   </div>;
 }
-function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, setSelM, selY, setSelY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements }) {
+function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setLang, onLogout, recordPayment, selM, setSelM, selY, setSelY, mk, onDeletePayment, onEditPayment, onSendNotice, notices, onUpdateNoticeStatus, onMarkNoticeRead, onReplyNotice, onMarkReplyRead, agreements, meters }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("home");
   const [selPay, setSelPay] = useState(null);
@@ -1994,6 +2112,25 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
                     📞 {bn ? "কল করুন" : "Call Now"}
                   </a>
                 </div>
+              </div>
+            </div>}
+
+            {/* Landlord Payment Info (bKash/Nagad) */}
+            {(landlord.bkashNo || landlord.nagadNo || landlord.rocketNo || landlord.bankInfo) && <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.04)" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#475569", marginBottom: 8 }}>💳 {bn ? "পেমেন্ট তথ্য" : "Payment Info"}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {landlord.bkashNo && <div style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(226,19,110,.06)", border: "1px solid rgba(226,19,110,.12)", fontSize: 11 }}>
+                  🟪 bKash: <strong style={{ color: "#E2136E" }}>{landlord.bkashNo}</strong>
+                </div>}
+                {landlord.nagadNo && <div style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(246,146,30,.06)", border: "1px solid rgba(246,146,30,.12)", fontSize: 11 }}>
+                  🟧 Nagad: <strong style={{ color: "#F6921E" }}>{landlord.nagadNo}</strong>
+                </div>}
+                {landlord.rocketNo && <div style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(142,36,170,.06)", border: "1px solid rgba(142,36,170,.12)", fontSize: 11 }}>
+                  🟣 Rocket: <strong style={{ color: "#8E24AA" }}>{landlord.rocketNo}</strong>
+                </div>}
+                {landlord.bankInfo && <div style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(33,150,243,.06)", border: "1px solid rgba(33,150,243,.12)", fontSize: 11, width: "100%" }}>
+                  🏛️ {landlord.bankInfo}
+                </div>}
               </div>
             </div>}
           </div>}
@@ -2619,6 +2756,12 @@ function ReceiptModal({ bn, payment, tenant, landlord, unit, prop, utilTypes, on
     <div style={{ display: "flex", gap: 6 }}>
       {!editing ? <>
         <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বন্ধ" : "Close"}</button>
+        {/* WhatsApp Receipt Share */}
+        {tenant?.phone && <button className="btn" style={{ flex: 1, background: "rgba(37,211,102,.1)", border: "1px solid rgba(37,211,102,.2)", color: "#25D366", fontSize: 11 }} onClick={() => {
+          const ph = (tenant.phone||"").replace(/[^0-9]/g,"").replace(/^0/, "88");
+          const msg = `📒 *মুন্সী রসিদ*\n━━━━━━━━━━━\n${isRent ? "🏠 বাড়ি ভাড়া" : `${ut?.i||"📦"} ${ut?.l||payment.type}`}\n💰 *৳${payment.amount?.toLocaleString()}*\n📅 মাস: ${payment.monthKey}\n📅 তারিখ: ${payment.paidAt?.split("T")[0]}\n💳 মাধ্যম: ${pm?.l||payment.method}\n✅ অবস্থা: পরিশোধিত\n━━━━━━━━━━━\n👤 ${tenant.name}\n🏠 ${unit?.unitNo||""} • ${prop?.name||""}\n\n${bn ? "ধন্যবাদ!" : "Thank you!"}`;
+          window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, "_blank");
+        }}>💬 WhatsApp</button>}
         {onEdit && <button className="btn bg" style={{ flex: 1 }} onClick={() => setEditing(true)}>✏️ {bn ? "সম্পাদনা" : "Edit"}</button>}
         {onDelete && <button className="btn bd" style={{ flex: 0 }} onClick={() => { if (confirm(bn ? "মুছে ফেলবেন?" : "Delete?")) onDelete(payment.id); }}>🗑️</button>}
       </> : <>
@@ -2827,6 +2970,118 @@ function AddAgreementModal({ bn, tenants, units, properties, landlordId, onSave,
         await onSave({ landlordId, tenantId: tid, tenantName: sel?.name, tenantPhone: sel?.phone, unitId: sel?.unitId, propertyId: selU?.propertyId, propertyName: selP?.name, unitNo: selU?.unitNo, rent: Number(f.rent), advance: Number(f.advance || 0), startDate: f.startDate, duration: Number(f.duration || 12), terms: f.terms, conditions: f.conditions, status: "active" });
         setBusy(false);
       }}>📜 {busy ? "⏳" : (bn ? "চুক্তি তৈরি" : "Create")}</button>
+    </div>
+  </div></div>;
+}
+
+// ═══ METER READING MODAL ═══
+function MeterReadingModal({ bn, units, tenants, properties, meters, onSave, onClose }) {
+  const [uid, setUid] = useState("");
+  const [prev, setPrev] = useState("");
+  const [curr, setCurr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const occUnits = units.filter(u => !u.isVacant);
+  const selUnit = units.find(u => u.id === uid);
+  const rate = selUnit?.electricityRate || 0;
+  const consumed = (Number(curr) || 0) - (Number(prev) || 0);
+  const bill = consumed * rate;
+  const now = new Date();
+  const monthKey = MK(now.getMonth(), now.getFullYear());
+
+  // Auto-fill previous reading from latest meter reading
+  useEffect(() => {
+    if (uid && meters) {
+      const uMeters = meters.filter(m => m.unitId === uid).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+      if (uMeters[0]) setPrev(String(uMeters[0].currentReading));
+      else setPrev("");
+    }
+  }, [uid, meters]);
+
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>⚡ {bn ? "মিটার রিডিং" : "Meter Reading"}</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div><label className="lbl">{bn ? "ইউনিট" : "Unit"}</label>
+        <select className="inp" value={uid} onChange={e => setUid(e.target.value)}>
+          <option value="">{bn ? "-- ইউনিট বাছুন --" : "-- Select Unit --"}</option>
+          {occUnits.map(u => {
+            const t = tenants.find(x => x.unitId === u.id);
+            const p = properties.find(x => x.id === u.propertyId);
+            return <option key={u.id} value={u.id}>{u.unitNo} • {p?.name} — {t?.name||"?"}</option>;
+          })}
+        </select>
+      </div>
+      {uid && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div><label className="lbl">{bn ? "আগের রিডিং" : "Previous"}</label>
+          <input className="inp" type="number" value={prev} onChange={e => setPrev(e.target.value)} placeholder="0" style={{ fontSize: 18, fontWeight: 700, textAlign: "center" }} /></div>
+        <div><label className="lbl">{bn ? "বর্তমান রিডিং" : "Current"}</label>
+          <input className="inp" type="number" value={curr} onChange={e => setCurr(e.target.value)} placeholder="0" style={{ fontSize: 18, fontWeight: 700, textAlign: "center" }} /></div>
+      </div>}
+      {uid && consumed > 0 && <div style={{ padding: 14, borderRadius: 12, background: "rgba(251,191,36,.06)", border: "1px solid rgba(251,191,36,.15)", textAlign: "center" }}>
+        <div style={{ fontSize: 11, color: "#64748B" }}>{consumed} {bn ? "ইউনিট" : "units"} × ৳{rate}/{bn ? "ইউনিট" : "unit"}</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: "#FBBF24", marginTop: 4 }}>৳{bn ? FM(bill) : FE(bill)}</div>
+      </div>}
+    </div>
+    <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+      <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
+      <button className="btn bp" style={{ flex: 1 }} disabled={busy || !uid || consumed <= 0} onClick={async () => {
+        setBusy(true);
+        await onSave({ unitId: uid, prevReading: Number(prev), currentReading: Number(curr), unitsConsumed: consumed, rate, billAmount: bill, monthKey, recordedBy: "landlord" });
+        setBusy(false); onClose();
+      }}>⚡ {busy ? "⏳" : (bn ? "রিডিং সেভ" : "Save Reading")}</button>
+    </div>
+  </div></div>;
+}
+
+// ═══ MOVE-OUT MODAL ═══
+function MoveOutModal({ bn, tenant, payments, onMoveOut, onClose }) {
+  const [deductions, setDeductions] = useState(0);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const deposit = tenant?.advance || 0;
+  const refund = Math.max(deposit - Number(deductions || 0), 0);
+
+  // Calculate dues
+  const now = new Date();
+  const mk = MK(now.getMonth(), now.getFullYear());
+  const curRent = (payments||[]).find(p => p.tenantId === tenant?.id && (!p.type || p.type === "rent") && p.monthKey === mk);
+  const hasDue = !curRent && tenant?.rent > 0;
+
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>🚪 {bn ? "Move-out প্রক্রিয়া" : "Move-out Process"}</h2>
+    <p style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>{tenant?.name}</p>
+
+    {/* Settlement Summary */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+      <div style={{ padding: 12, borderRadius: 10, background: "rgba(16,185,129,.04)", border: "1px solid rgba(16,185,129,.1)" }}>
+        <div style={{ fontSize: 10, color: "#475569" }}>{bn ? "💵 জামানত / অগ্রিম" : "💵 Security Deposit"}</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#34D399" }}>৳{deposit.toLocaleString()}</div>
+      </div>
+
+      {hasDue && <div style={{ padding: 10, borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.1)", fontSize: 11, color: "#FCA5A5" }}>
+        ⚠️ {bn ? "এই মাসের ভাড়া বাকি আছে!" : "Current month rent is due!"}
+      </div>}
+
+      <div><label className="lbl">{bn ? "কর্তন (ক্ষতিপূরণ/বাকি)" : "Deductions"}</label>
+        <input className="inp" type="number" value={deductions} onChange={e => setDeductions(e.target.value)} placeholder="0" /></div>
+
+      <div><label className="lbl">{bn ? "কারণ" : "Reason"}</label>
+        <input className="inp" value={reason} onChange={e => setReason(e.target.value)} placeholder={bn ? "কর্তনের কারণ (ঐচ্ছিক)" : "Reason for deductions (optional)"} /></div>
+
+      <div style={{ padding: 14, borderRadius: 12, background: "rgba(59,130,246,.06)", border: "1px solid rgba(59,130,246,.15)", textAlign: "center" }}>
+        <div style={{ fontSize: 10, color: "#64748B" }}>{bn ? "ফেরত দিতে হবে" : "Refund Amount"}</div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#60A5FA" }}>৳{refund.toLocaleString()}</div>
+        {Number(deductions) > 0 && <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>৳{deposit.toLocaleString()} - ৳{Number(deductions).toLocaleString()} = ৳{refund.toLocaleString()}</div>}
+      </div>
+    </div>
+
+    <div style={{ display: "flex", gap: 8 }}>
+      <button className="btn bg" style={{ flex: 1 }} onClick={onClose}>{bn ? "বাতিল" : "Cancel"}</button>
+      <button className="btn bd" style={{ flex: 1 }} disabled={busy} onClick={async () => {
+        if (!confirm(bn ? `${tenant.name} কে move-out করবেন? ফেরত: ৳${refund}` : `Move out ${tenant.name}? Refund: ৳${refund}`)) return;
+        setBusy(true);
+        await onMoveOut(tenant.id, { deductions: Number(deductions), reason, refundAmount: refund, dueRent: hasDue ? tenant.rent : 0 });
+        setBusy(false); onClose();
+      }}>🚪 {busy ? "⏳" : (bn ? "Move-out নিশ্চিত" : "Confirm Move-out")}</button>
     </div>
   </div></div>;
 }
