@@ -1709,15 +1709,19 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
   return <div>
     <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" onLogout={onLogout}>
+      {/* ═══ NAV TABS inline ═══ */}
+      {me?.unitId && <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "4px 10px", borderRadius: 8, background: tab === t.k ? "rgba(16,185,129,.12)" : "transparent", transition: "all .15s", position: "relative" }}>
+          <div style={{ fontSize: 14 }}>{t.i}</div>
+          <div style={{ fontSize: 8, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", lineHeight: 1 }}>{t.l}</div>
+          {t.badge > 0 && <span style={{ position: "absolute", top: -2, right: 0, width: 14, height: 14, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 7, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
+        </div>)}
+      </div>}
       {/* 🔔 Notification Bell */}
       <div onClick={() => setTab("notices")} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
         <span style={{ fontSize: 18 }}>🔔</span>
         {totalAlerts > 0 && <span style={{ position: "absolute", top: 0, right: 2, minWidth: 18, height: 18, borderRadius: 9, background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", animation: "pulse 2s infinite" }}>{totalAlerts}</span>}
       </div>
-      {/* 📅 Month Selector */}
-      <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 11 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
-        {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
-      </select>
       {/* 👤 User Profile Dropdown */}
       <div style={{ position: "relative" }}>
         <div onClick={() => setShowProfile(!showProfile)} style={{ cursor: "pointer", padding: "4px 10px", background: showProfile ? "rgba(16,185,129,.08)" : "rgba(255,255,255,.025)", borderRadius: 8, fontSize: 11, color: "#64748B", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1746,17 +1750,6 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
         </div>}
       </div>
     </Bar>
-
-    {/* ═══ TOP NAV TABS (moved from bottom) ═══ */}
-    {me?.unitId && <div style={{ position: "sticky", top: 52, zIndex: 99, background: "rgba(6,11,22,.95)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,.04)", padding: "6px 0" }}>
-      <div style={{ maxWidth: 700, margin: "0 auto", display: "flex", justifyContent: "space-around", padding: "0 8px" }}>
-        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 14px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.1)" : "transparent", transition: "all .15s", position: "relative" }}>
-          <div style={{ fontSize: 16 }}>{t.i}</div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", marginTop: 1 }}>{t.l}</div>
-          {t.badge > 0 && <span style={{ position: "absolute", top: 0, right: 2, width: 15, height: 15, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 8, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
-        </div>)}
-      </div>
-    </div>}
 
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 24px" }}>
       {!me?.unitId ? <div className="G2" style={{ padding: 50, textAlign: "center", animation: "fadeIn .4s" }}>
@@ -1867,7 +1860,18 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
           </div>
 
           {/* ═══ সারি ৩: হালনাগাদ বিল — মাস + প্রতিটি বিলের স্ট্যাটাস ═══ */}
-          <div className="G2" style={{ padding: 18, marginBottom: 12 }}>
+          {(() => {
+            // Check if selected month is before move-in
+            const moveIn = me?.moveInDate;
+            let isBeforeMoveIn = false;
+            if (moveIn) {
+              const miDate = new Date(moveIn);
+              const selDate = new Date(selY, selM);
+              const miStart = new Date(miDate.getFullYear(), miDate.getMonth());
+              isBeforeMoveIn = selDate < miStart;
+            }
+
+            return <div className="G2" style={{ padding: 18, marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <h3 style={{ fontSize: 14, fontWeight: 700 }}>📋 {bn ? "হালনাগাদ বিল" : "Bill Status"}</h3>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1877,66 +1881,54 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
               </div>
             </div>
 
-            {(() => {
-              // Check if selected month is before move-in
-              const moveIn = me?.moveInDate;
-              let isBeforeMoveIn = false;
-              if (moveIn) {
-                const miDate = new Date(moveIn);
-                const miMonth = miDate.getMonth();
-                const miYear = miDate.getFullYear();
-                const selDate = new Date(selY, selM);
-                const miStart = new Date(miYear, miMonth);
-                isBeforeMoveIn = selDate < miStart;
-              }
+            {isBeforeMoveIn ? <div style={{ padding: 30, textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.04)" }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🚫</div>
+                <div style={{ fontWeight: 700, color: "#94A3B8", fontSize: 13, marginBottom: 4 }}>{bn ? "প্রযোজ্য নয়" : "Not Applicable"}</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>{bn ? `আপনি এই ইউনিটে এসেছেন ${moveIn} তারিখে। এর আগের মাসের বিল নেই।` : `You moved in on ${moveIn}. No bills before that.`}</div>
+              </div>
+            : <>
+              {(() => {
+                const billTypes = [
+                  { k: "rent", l: bn ? "বাড়ি ভাড়া" : "Rent", i: "🏠", c: "#34D399", amount: me?.rent },
+                  { k: "service", l: bn ? "সার্ভিস চার্জ" : "Service Charge", i: "🔧", c: "#A78BFA", amount: unit?.serviceCharge },
+                  { k: "gas", l: bn ? "গ্যাস বিল" : "Gas Bill", i: "🔥", c: "#F97316", amount: unit?.gasBill },
+                  { k: "electricity", l: bn ? "বিদ্যুৎ বিল" : "Electricity", i: "⚡", c: "#FBBF24", amount: null },
+                  { k: "water", l: bn ? "পানি বিল" : "Water Bill", i: "💧", c: "#38BDF8", amount: null },
+                  { k: "internet", l: bn ? "ইন্টারনেট" : "Internet", i: "🌐", c: "#34D399", amount: null },
+                ].filter(b => b.amount > 0 || b.k === "rent" || payments.some(p => p.type === b.k && p.monthKey === mk));
 
-              if (isBeforeMoveIn) {
-                return <div style={{ padding: 30, textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.04)" }}>
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>🚫</div>
-                  <div style={{ fontWeight: 700, color: "#94A3B8", fontSize: 13, marginBottom: 4 }}>{bn ? "প্রযোজ্য নয়" : "Not Applicable"}</div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{bn ? `আপনি এই ইউনিটে এসেছেন ${moveIn} তারিখে। এর আগের মাসের বিল নেই।` : `You moved in on ${moveIn}. No bills before that.`}</div>
+                return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {billTypes.map(bt => {
+                    const paid = bt.k === "rent"
+                      ? rentPays.find(p => p.monthKey === mk)
+                      : payments.find(p => p.type === bt.k && p.monthKey === mk);
+                    const isPaid = !!paid;
+                    const paidAmt = paid ? Number(paid.amount) : 0;
+                    return <div key={bt.k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: isPaid ? "rgba(16,185,129,.03)" : "rgba(245,158,11,.03)", border: `1px solid ${isPaid ? "rgba(16,185,129,.1)" : "rgba(245,158,11,.1)"}` }}>
+                      <span style={{ fontSize: 18, width: 28, textAlign: "center" }}>{bt.i}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#CBD5E1" }}>{bt.l}</div>
+                        {bt.amount > 0 && <div style={{ fontSize: 10, color: "#475569" }}>৳{bn ? FM(bt.amount) : FE(bt.amount)}</div>}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        {isPaid ? <>
+                          <span className="badge bP" style={{ fontSize: 10 }}>✅ {bn ? "পেইড" : "Paid"}</span>
+                          <div style={{ fontSize: 10, color: "#34D399", fontWeight: 700, marginTop: 2 }}>৳{bn ? FM(paidAmt) : FE(paidAmt)}</div>
+                        </> : <span className="badge bD" style={{ fontSize: 10 }}>⏳ {bn ? "বাকি" : "Due"}</span>}
+                      </div>
+                    </div>;
+                  })}
                 </div>;
-              }
+              })()}
 
-              const billTypes = [
-                { k: "rent", l: bn ? "বাড়ি ভাড়া" : "Rent", i: "🏠", c: "#34D399", amount: me?.rent },
-                { k: "service", l: bn ? "সার্ভিস চার্জ" : "Service Charge", i: "🔧", c: "#A78BFA", amount: unit?.serviceCharge },
-                { k: "gas", l: bn ? "গ্যাস বিল" : "Gas Bill", i: "🔥", c: "#F97316", amount: unit?.gasBill },
-                { k: "electricity", l: bn ? "বিদ্যুৎ বিল" : "Electricity", i: "⚡", c: "#FBBF24", amount: null },
-                { k: "water", l: bn ? "পানি বিল" : "Water Bill", i: "💧", c: "#38BDF8", amount: null },
-                { k: "internet", l: bn ? "ইন্টারনেট" : "Internet", i: "🌐", c: "#34D399", amount: null },
-              ].filter(b => b.amount > 0 || b.k === "rent" || payments.some(p => p.type === b.k && p.monthKey === mk));
-
-              return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {billTypes.map(bt => {
-                  const paid = bt.k === "rent"
-                    ? rentPays.find(p => p.monthKey === mk)
-                    : payments.find(p => p.type === bt.k && p.monthKey === mk);
-                  const isPaid = !!paid;
-                  const paidAmt = paid ? Number(paid.amount) : 0;
-                  return <div key={bt.k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: isPaid ? "rgba(16,185,129,.03)" : "rgba(245,158,11,.03)", border: `1px solid ${isPaid ? "rgba(16,185,129,.1)" : "rgba(245,158,11,.1)"}` }}>
-                    <span style={{ fontSize: 18, width: 28, textAlign: "center" }}>{bt.i}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#CBD5E1" }}>{bt.l}</div>
-                      {bt.amount > 0 && <div style={{ fontSize: 10, color: "#475569" }}>৳{bn ? FM(bt.amount) : FE(bt.amount)}</div>}
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      {isPaid ? <>
-                        <span className="badge bP" style={{ fontSize: 10 }}>✅ {bn ? "পেইড" : "Paid"}</span>
-                        <div style={{ fontSize: 10, color: "#34D399", fontWeight: 700, marginTop: 2 }}>৳{bn ? FM(paidAmt) : FE(paidAmt)}</div>
-                      </> : <span className="badge bD" style={{ fontSize: 10 }}>⏳ {bn ? "বাকি" : "Due"}</span>}
-                    </div>
-                  </div>;
-                })}
-              </div>;
-            })()}
-
-            {/* Quick action buttons */}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              {(!curRentPay || curRentPay.status !== "paid") && <button className="btn bp" style={{ flex: 1, fontSize: 12 }} onClick={() => setModal("payRent")}>💰 {bn ? "ভাড়া দিন" : "Pay Rent"}</button>}
-              <button className="btn bg" style={{ flex: 1, fontSize: 12 }} onClick={() => setModal("payUtil")}>📄 {bn ? "বিল দিন" : "Pay Bill"}</button>
-            </div>
-          </div>
+              {/* Quick action buttons - only when bills are applicable */}
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                {(!curRentPay || curRentPay.status !== "paid") && <button className="btn bp" style={{ flex: 1, fontSize: 12 }} onClick={() => setModal("payRent")}>💰 {bn ? "ভাড়া দিন" : "Pay Rent"}</button>}
+                <button className="btn bg" style={{ flex: 1, fontSize: 12 }} onClick={() => setModal("payUtil")}>📄 {bn ? "বিল দিন" : "Pay Bill"}</button>
+              </div>
+            </>}
+          </div>;
+          })()}
         </>}
 
         {/* ═══ BILLS TAB ═══ */}
