@@ -1,10 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { auth, googleProvider, setupRecaptcha, sendPhoneOTP } from "./firebase";
+import { auth, googleProvider } from "./firebase";
 import {
   signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  onAuthStateChanged, signOut, updateProfile, linkWithCredential, EmailAuthProvider
+  onAuthStateChanged, signOut, updateProfile, linkWithCredential, EmailAuthProvider,
+  RecaptchaVerifier, signInWithPhoneNumber
 } from "firebase/auth";
 import * as DB from "./db";
+
+// ─── PHONE AUTH HELPERS (inline) ───
+let _recaptchaVerifier = null;
+function setupRecaptcha(buttonId) {
+  if (_recaptchaVerifier) { try { _recaptchaVerifier.clear(); } catch(e) {} _recaptchaVerifier = null; }
+  _recaptchaVerifier = new RecaptchaVerifier(auth, buttonId, { size: "invisible", callback: () => {}, "expired-callback": () => { _recaptchaVerifier = null; } });
+  return _recaptchaVerifier;
+}
+async function sendPhoneOTP(phone) {
+  const f = phone.replace(/[^0-9]/g, "");
+  const intl = f.startsWith("88") ? `+${f}` : `+88${f}`;
+  if (!_recaptchaVerifier) throw new Error("Recaptcha not initialized");
+  return await signInWithPhoneNumber(auth, intl, _recaptchaVerifier);
+}
 
 // ─── CONSTANTS ───
 const MK = (m, y) => `${y}-${String(m + 1).padStart(2, "0")}`;
