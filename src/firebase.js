@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -15,3 +15,26 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// ═══ PHONE AUTH HELPERS ═══
+let recaptchaVerifier = null;
+
+export function setupRecaptcha(buttonId) {
+  if (recaptchaVerifier) {
+    try { recaptchaVerifier.clear(); } catch(e) {}
+    recaptchaVerifier = null;
+  }
+  recaptchaVerifier = new RecaptchaVerifier(auth, buttonId, {
+    size: "invisible",
+    callback: () => {},
+    "expired-callback": () => { recaptchaVerifier = null; }
+  });
+  return recaptchaVerifier;
+}
+
+export async function sendPhoneOTP(phoneNumber) {
+  const formatted = phoneNumber.replace(/[^0-9]/g, "");
+  const intl = formatted.startsWith("88") ? `+${formatted}` : `+88${formatted}`;
+  if (!recaptchaVerifier) throw new Error("Recaptcha not initialized");
+  return await signInWithPhoneNumber(auth, intl, recaptchaVerifier);
+}
