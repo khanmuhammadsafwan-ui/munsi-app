@@ -406,7 +406,9 @@ export default function App() {
 
       {screen === "admin" && profile?.role === "admin" && (
         <AdminPanel db={{ landlords, tenants, properties, units, payments, logs }}
+          notices={notices} agreements={agreements} expenses={expenses} meters={meters}
           bn={bn} lang={lang} setLang={setLang} onLogout={handleLogout}
+          onDeletePayment={handleDeletePayment} onEditPayment={handleEditPayment}
           selM={selM} setSelM={setSelM} selY={selY} setSelY={setSelY} mk={mk} onRefresh={loadAdminData} />
       )}
 
@@ -1042,105 +1044,431 @@ function Bar({ bn, lang, setLang, label, icon, user, onLogout, onRefresh, childr
 }
 
 // ═══ ADMIN PANEL ═══
-function AdminPanel({ db, bn, lang, setLang, onLogout, selM, setSelM, selY, setSelY, mk, onRefresh }) {
+function AdminPanel({ db, notices, agreements, expenses, meters, bn, lang, setLang, onLogout, onDeletePayment, onEditPayment, selM, setSelM, selY, setSelY, mk, onRefresh }) {
   const [tab, setTab] = useState("overview");
   const [search, setSearch] = useState("");
+  const [selItem, setSelItem] = useState(null);
+  const [detailType, setDetailType] = useState(null);
   const { landlords, tenants, properties, units, payments, logs } = db;
+
+  // ─── COMPUTED STATS ───
   const mPay = payments.filter(p => p.monthKey === mk);
   const totCol = mPay.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const mRent = mPay.filter(p => !p.type || p.type === "rent");
+  const mUtil = mPay.filter(p => p.type && p.type !== "rent");
+  const rentCol = mRent.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const utilCol = mUtil.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const mExp = (expenses || []).filter(e => (e.date || e.createdAt || "").startsWith(`${selY}-${String(selM + 1).padStart(2, "0")}`));
+  const totalExpenses = mExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const netProfit = totCol - totalExpenses;
+  const occ = units.filter(u => !u.isVacant).length;
+  const vac = units.filter(u => u.isVacant).length;
+  const occRate = units.length ? Math.round((occ / units.length) * 100) : 0;
+  const activeTenants = tenants.filter(t => t.unitId && t.status !== "moved_out");
+  const movedOut = tenants.filter(t => t.status === "moved_out");
+
+  // 6-month revenue trend
+  const months6 = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(selY, selM - i);
+    const m = d.getMonth(); const y = d.getFullYear();
+    const k = MK(m, y);
+    const mp = payments.filter(p => p.monthKey === k);
+    const rev = mp.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    months6.push({ label: (bn ? MBN : MEN)[m], key: k, rev });
+  }
+  const maxRev = Math.max(...months6.map(m => m.rev), 1);
+
+  // Search filter
+  const sq = search.toLowerCase();
+  const filteredLandlords = sq ? landlords.filter(l => (l.name || "").toLowerCase().includes(sq) || (l.phone || "").includes(sq)) : landlords;
+  const filteredTenants = sq ? tenants.filter(t => (t.name || "").toLowerCase().includes(sq) || (t.phone || "").includes(sq)) : tenants;
+
+  // Helper
+  const getLL = (lid) => landlords.find(l => l.id === lid);
+  const getUnit = (uid) => units.find(u => u.id === uid);
+  const getProp = (pid) => properties.find(p => p.id === pid);
 
   return <div>
-    <Bar bn={bn} lang={lang} setLang={setLang} label="MASTER DASHBOARD" icon="👑" user="Admin" onLogout={onLogout} onRefresh={onRefresh}>
-      <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 11 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
+    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "মাস্টার কন্ট্রোল" : "MASTER CONTROL"} icon="🛡️" user="Admin" onLogout={onLogout} onRefresh={onRefresh}>
+      <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 12 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
         {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
       </select>
+      <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 12 }} value={selY} onChange={e => setSelY(Number(e.target.value))}>
+        {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+      </select>
     </Bar>
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 40px" }}>
-      <div className="rg2" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 20 }}>
-        {[{ i: "🏠", l: bn ? "বাড়িওয়ালা" : "Landlords", v: landlords.length },
-          { i: "👤", l: bn ? "ভাড়াটিয়া" : "Tenants", v: tenants.length },
-          { i: "🏘️", l: bn ? "বাড়ি" : "Properties", v: properties.length },
-          { i: "💰", l: bn ? "আদায়" : "Collected", v: `৳${bn ? FM(totCol) : FE(totCol)}` },
-          { i: "🚪", l: bn ? "খালি" : "Vacant", v: `${units.filter(u => u.isVacant).length}/${units.length}` },
-        ].map((s, i) => <div key={i} className="G" style={{ padding: 14, animation: `fadeIn .3s ease-out ${i * .04}s both` }}>
-          <div style={{ fontSize: 20, marginBottom: 4 }}>{s.i}</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{s.v}</div>
-          <div style={{ fontSize: 12, color: "#475569" }}>{s.l}</div>
-        </div>)}
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 16px 40px" }}>
+
+      {/* ═══ TAB NAV ═══ */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, overflowX: "auto", paddingBottom: 4 }}>
+        {[{ k: "overview", l: bn ? "📊 সারসংক্ষেপ" : "📊 Overview" },
+          { k: "landlords", l: `🏠 ${bn ? "বাড়িওয়ালা" : "Landlords"} (${landlords.length})` },
+          { k: "tenants", l: `👤 ${bn ? "ভাড়াটিয়া" : "Tenants"} (${tenants.length})` },
+          { k: "properties", l: `🏘️ ${bn ? "বাড়ি" : "Properties"} (${properties.length})` },
+          { k: "payments", l: `💰 ${bn ? "পেমেন্ট" : "Payments"} (${mPay.length})` },
+          { k: "logs", l: `📋 ${bn ? "লগ" : "Logs"}` },
+        ].map(t => <div key={t.k} onClick={() => { setTab(t.k); setSelItem(null); setDetailType(null); }} style={{ padding: "10px 18px", borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", background: tab === t.k ? "rgba(139,92,246,.12)" : "transparent", color: tab === t.k ? "#A78BFA" : "#64748B", border: `1px solid ${tab === t.k ? "rgba(139,92,246,.2)" : "transparent"}` }}>{t.l}</div>)}
       </div>
 
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, overflowX: "auto" }}>
-        {[{ k: "overview", l: "📊" }, { k: "landlords", l: "🏠" }, { k: "tenants", l: "👤" }, { k: "payments", l: "💰" }, { k: "logs", l: "📋" }].map(t =>
-          <div key={t.k} onClick={() => setTab(t.k)} style={{ padding: "8px 16px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab === t.k ? "#34D399" : "#475569", border: `1px solid ${tab === t.k ? "rgba(16,185,129,.2)" : "transparent"}`, whiteSpace: "nowrap" }}>
-            {t.l} {bn ? ({ overview: "সারসংক্ষেপ", landlords: "বাড়িওয়ালা", tenants: "ভাড়াটিয়া", payments: "পেমেন্ট", logs: "লগ" }[t.k]) : t.k}
+      {/* Global Search */}
+      {tab !== "overview" && tab !== "logs" && <div style={{ position: "relative", marginBottom: 16 }}>
+        <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: .4 }}>🔍</span>
+        <input className="search-bar" placeholder={bn ? "নাম বা ফোন দিয়ে খুঁজুন..." : "Search by name or phone..."} value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <span onClick={() => setSearch("")} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", cursor: "pointer", opacity: .4 }}>✕</span>}
+      </div>}
+
+      {/* ═══════════════════════════════════ */}
+      {/* ═══ OVERVIEW TAB ═══ */}
+      {/* ═══════════════════════════════════ */}
+      {tab === "overview" && <div style={{ animation: "fadeIn .3s" }}>
+
+        {/* KPI Cards — 2 rows */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }} className="rg2">
+          {[{ i: "💰", l: bn ? "মোট আদায়" : "Total Collected", v: `৳${bn ? FM(totCol) : FE(totCol)}`, c: "#34D399", sub: `${bn ? "ভাড়া" : "Rent"}: ৳${bn ? FM(rentCol) : FE(rentCol)} | ${bn ? "বিল" : "Bills"}: ৳${bn ? FM(utilCol) : FE(utilCol)}` },
+            { i: "📈", l: bn ? "নেট মুনাফা" : "Net Profit", v: `৳${bn ? FM(netProfit) : FE(netProfit)}`, c: netProfit >= 0 ? "#10B981" : "#EF4444", sub: `${bn ? "খরচ" : "Expenses"}: ৳${bn ? FM(totalExpenses) : FE(totalExpenses)}` },
+            { i: "🏠", l: bn ? "দখল হার" : "Occupancy", v: `${occRate}%`, c: occRate > 80 ? "#10B981" : occRate > 50 ? "#F59E0B" : "#EF4444", sub: `${occ} ${bn ? "ভাড়া" : "occ"} / ${vac} ${bn ? "খালি" : "vac"}` },
+            { i: "👥", l: bn ? "সক্রিয় ব্যবহারকারী" : "Active Users", v: `${landlords.length + activeTenants.length}`, c: "#6366F1", sub: `${landlords.length} ${bn ? "বাড়িওয়ালা" : "LL"} + ${activeTenants.length} ${bn ? "ভাড়াটিয়া" : "T"}` },
+          ].map((s, i) => <div key={i} className="G" style={{ padding: 18, animation: `fadeIn .3s ease-out ${i * .05}s both` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 22 }}>{s.i}</span>
+              <span style={{ fontSize: 12, color: "#64748B" }}>{s.l}</span>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: s.c }}>{s.v}</div>
+            {s.sub && <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{s.sub}</div>}
           </div>)}
-      </div>
+        </div>
 
-      {tab === "landlords" && <div className="G" style={{ overflow: "hidden" }}>
-        {landlords.map(l => <div key={l.id} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div><div style={{ fontWeight: 700, color: "#fff" }}>{l.name}</div><div style={{ fontSize: 11, color: "#475569" }}>📞 {l.phone} • 📍 {l.location}</div></div>
-            <div className="code" style={{ fontSize: 16 }}>{l.inviteCode}</div>
+        {/* More KPIs row 2 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }} className="rg2">
+          {[{ i: "🏘️", l: bn ? "বাড়ি" : "Properties", v: properties.length, c: "#8B5CF6" },
+            { i: "🚪", l: bn ? "মোট ইউনিট" : "Total Units", v: units.length, c: "#06B6D4" },
+            { i: "📜", l: bn ? "চুক্তি" : "Agreements", v: (agreements || []).length, c: "#F97316" },
+            { i: "📨", l: bn ? "নোটিশ" : "Notices", v: (notices || []).length, c: "#EC4899" },
+          ].map((s, i) => <div key={i} className="G CH" style={{ padding: 16 }} onClick={() => setTab(s.i === "🏘️" ? "properties" : s.i === "📨" ? "logs" : "overview")}>
+            <div style={{ fontSize: 18 }}>{s.i}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.c, marginTop: 4 }}>{s.v}</div>
+            <div style={{ fontSize: 12, color: "#64748B" }}>{s.l}</div>
+          </div>)}
+        </div>
+
+        {/* 6-Month Revenue Chart */}
+        <div className="G" style={{ padding: 20, marginBottom: 16 }}>
+          <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: "#fff" }}>📊 {bn ? "৬ মাসের আয়ের ট্রেন্ড" : "6-Month Revenue Trend"}</h4>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 140 }}>
+            {months6.map((m, i) => <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#A78BFA" }}>৳{m.rev >= 1000 ? `${Math.round(m.rev / 1000)}K` : m.rev}</div>
+              <div style={{ width: "100%", borderRadius: "6px 6px 0 0", background: i === 5 ? "linear-gradient(180deg,#A78BFA,#6366F1)" : "rgba(139,92,246,.15)", height: `${Math.max((m.rev / maxRev) * 100, 4)}%`, transition: "height .5s", minHeight: 4 }} />
+              <div style={{ fontSize: 11, color: "#64748B" }}>{m.label}</div>
+            </div>)}
           </div>
-        </div>)}
-        {landlords.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#475569" }}>{bn ? "কেউ নেই" : "None"}</div>}
+        </div>
+
+        {/* Two-column: Recent Payments + Recent Logs */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="rg">
+          <div className="G" style={{ padding: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h4 style={{ fontSize: 14, fontWeight: 700 }}>💰 {bn ? "সাম্প্রতিক পেমেন্ট" : "Recent Payments"}</h4>
+              <span className="badge bA" onClick={() => setTab("payments")} style={{ cursor: "pointer" }}>{bn ? "সব দেখুন →" : "View all →"}</span>
+            </div>
+            {mPay.slice(0, 6).map(p => {
+              const t = tenants.find(x => x.id === p.tenantId);
+              return <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,.02)", fontSize: 13 }}>
+                <div>
+                  <span style={{ fontWeight: 600, color: "#E2E8F0" }}>{t?.name || "?"}</span>
+                  <span style={{ color: "#475569", marginLeft: 6, fontSize: 11 }}>{p.paidAt?.split("T")[0]}</span>
+                </div>
+                <span style={{ fontWeight: 700, color: "#34D399" }}>৳{bn ? FM(p.amount) : FE(p.amount)}</span>
+              </div>;
+            })}
+            {mPay.length === 0 && <div style={{ padding: 20, textAlign: "center", color: "#475569" }}>{bn ? "এই মাসে পেমেন্ট নেই" : "No payments this month"}</div>}
+          </div>
+
+          <div className="G" style={{ padding: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h4 style={{ fontSize: 14, fontWeight: 700 }}>📋 {bn ? "সাম্প্রতিক কার্যকলাপ" : "Recent Activity"}</h4>
+              <span className="badge bA" onClick={() => setTab("logs")} style={{ cursor: "pointer" }}>{bn ? "সব দেখুন →" : "View all →"}</span>
+            </div>
+            {logs.slice(0, 6).map(l => <div key={l.id} style={{ padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.02)" }}>
+              <div style={{ fontSize: 12, color: "#94A3B8" }}>{l.detail}</div>
+              <div style={{ fontSize: 11, color: "#334155" }}>{l.action} • {l.ts ? new Date(l.ts).toLocaleString("bn-BD") : ""}</div>
+            </div>)}
+            {logs.length === 0 && <div style={{ padding: 20, textAlign: "center", color: "#475569" }}>{bn ? "কোনো কার্যকলাপ নেই" : "No activity"}</div>}
+          </div>
+        </div>
+
+        {/* Payment Method Breakdown */}
+        {mPay.length > 0 && <div className="G" style={{ padding: 18, marginTop: 14 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>💳 {bn ? "পেমেন্ট মাধ্যম ব্রেকডাউন" : "Payment Method Breakdown"}</h4>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {PAY.map(m => {
+              const ct = mPay.filter(p => p.method === m.k);
+              const amt = ct.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+              if (ct.length === 0) return null;
+              return <div key={m.k} style={{ flex: "1 1 120px", padding: 14, borderRadius: 12, background: `${m.c}08`, border: `1px solid ${m.c}20` }}>
+                <div style={{ fontSize: 18, marginBottom: 4 }}>{m.i}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: m.c }}>{m.l}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginTop: 4 }}>৳{bn ? FM(amt) : FE(amt)}</div>
+                <div style={{ fontSize: 11, color: "#64748B" }}>{ct.length} {bn ? "টি লেনদেন" : "transactions"}</div>
+              </div>;
+            })}
+          </div>
+        </div>}
       </div>}
 
-      {tab === "tenants" && <div className="G" style={{ overflow: "hidden" }}>
-        {tenants.map(t => {
-          const ll = landlords.find(l => l.id === t.landlordId);
-          return <div key={t.id} className="row">
-            <div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 12, color: "#475569" }}>📞 {t.phone} → 🏠 {ll?.name || "?"}</div></div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontWeight: 700, color: "#34D399" }}>৳{bn ? FM(t.rent) : FE(t.rent)}</div>
-              <span className={`badge ${t.unitId ? "bA" : "bD"}`} style={{ fontSize: 9 }}>{t.unitId ? "✓" : "⏳"}</span>
+      {/* ═══════════════════════════════════ */}
+      {/* ═══ LANDLORDS TAB ═══ */}
+      {/* ═══════════════════════════════════ */}
+      {tab === "landlords" && <div style={{ animation: "fadeIn .3s" }}>
+        {!selItem ? <>
+          {filteredLandlords.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>🏠</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#64748B" }}>{search ? (bn ? "খুঁজে পাওয়া যায়নি" : "Not found") : (bn ? "কোনো বাড়িওয়ালা নেই" : "No landlords")}</div>
+          </div> : <div className="G" style={{ overflow: "hidden" }}>
+            {filteredLandlords.map(l => {
+              const lTenants = tenants.filter(t => t.landlordId === l.id && t.unitId);
+              const lProps = properties.filter(p => p.landlordId === l.id);
+              const lPay = mPay.filter(p => {
+                const t = tenants.find(x => x.id === p.tenantId);
+                return t?.landlordId === l.id;
+              });
+              const lRev = lPay.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+              return <div key={l.id} className="row" style={{ cursor: "pointer", padding: 16 }} onClick={() => { setSelItem(l); setDetailType("landlord"); }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                  <div className="av" style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(139,92,246,.08)", fontSize: 18 }}>🏠</div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{l.name}</div>
+                    <div style={{ fontSize: 12, color: "#64748B" }}>📞 {l.phone} • 📍 {l.location || l.address || "—"}</div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      <span className="badge bA" style={{ fontSize: 10 }}>{lProps.length} {bn ? "বাড়ি" : "props"}</span>
+                      <span className="badge bA" style={{ fontSize: 10 }}>{lTenants.length} {bn ? "ভাড়াটিয়া" : "tenants"}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, color: "#34D399", fontSize: 16 }}>৳{bn ? FM(lRev) : FE(lRev)}</div>
+                  <div style={{ fontSize: 11, color: "#64748B" }}>{bn ? "এই মাসে" : "this month"}</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 13, color: "#A78BFA", marginTop: 4, letterSpacing: 1 }}>{l.inviteCode}</div>
+                </div>
+              </div>;
+            })}
+          </div>}
+        </> : detailType === "landlord" && <div>
+          {/* Landlord Detail View */}
+          <button className="btn bg bs" onClick={() => { setSelItem(null); setDetailType(null); }} style={{ marginBottom: 16 }}>← {bn ? "ফিরে যান" : "Back"}</button>
+          <div className="G2" style={{ padding: 20, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+              <div className="av" style={{ width: 56, height: 56, fontSize: 24, background: "rgba(139,92,246,.08)" }}>🏠</div>
+              <div>
+                <h3 style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{selItem.name}</h3>
+                <div style={{ fontSize: 13, color: "#64748B" }}>📞 {selItem.phone} • ✉️ {selItem.email || "—"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>📍 {selItem.address || selItem.location || "—"} • 🆔 {selItem.inviteCode}</div>
+              </div>
+            </div>
+            {/* Landlord's Properties */}
+            <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: "#A78BFA" }}>🏘️ {bn ? "বাড়িসমূহ" : "Properties"}</h4>
+            {properties.filter(p => p.landlordId === selItem.id).map(p => {
+              const pu = units.filter(u => u.propertyId === p.id);
+              return <div key={p.id} className="G" style={{ padding: 14, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: "#475569" }}>{p.address} • {pu.length} {bn ? "ইউনিট" : "units"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <span className="badge bA">{pu.filter(u => !u.isVacant).length} {bn ? "ভাড়া" : "occ"}</span>
+                    <span className="badge bV">{pu.filter(u => u.isVacant).length} {bn ? "খালি" : "vac"}</span>
+                  </div>
+                </div>
+              </div>;
+            })}
+            {/* Landlord's Tenants */}
+            <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, marginTop: 16, color: "#34D399" }}>👤 {bn ? "ভাড়াটিয়া" : "Tenants"}</h4>
+            {tenants.filter(t => t.landlordId === selItem.id).map(t => {
+              const u = getUnit(t.unitId);
+              return <div key={t.id} className="row" style={{ background: "rgba(255,255,255,.01)", borderRadius: 10, marginBottom: 4 }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: "#E2E8F0", fontSize: 13 }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: "#475569" }}>📞 {t.phone} • {u?.unitNo || (bn ? "অ্যাসাইন নেই" : "Unassigned")}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 700, color: "#34D399" }}>৳{bn ? FM(t.rent) : FE(t.rent)}</div>
+                  <span className={`badge ${t.unitId ? "bA" : "bD"}`} style={{ fontSize: 10 }}>{t.unitId ? "✓ Active" : "⏳"}</span>
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>}
+      </div>}
+
+      {/* ═══════════════════════════════════ */}
+      {/* ═══ TENANTS TAB ═══ */}
+      {/* ═══════════════════════════════════ */}
+      {tab === "tenants" && <div style={{ animation: "fadeIn .3s" }}>
+        {/* Status filter */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <span className="badge bA">{activeTenants.length} {bn ? "সক্রিয়" : "Active"}</span>
+          <span className="badge bD">{tenants.filter(t => !t.unitId && t.status !== "moved_out").length} {bn ? "অ্যাসাইন নেই" : "Unassigned"}</span>
+          {movedOut.length > 0 && <span className="badge" style={{ background: "rgba(255,255,255,.04)", color: "#475569" }}>{movedOut.length} {bn ? "চলে গেছে" : "Moved out"}</span>}
+        </div>
+        {filteredTenants.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>👤</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#64748B" }}>{search ? (bn ? "খুঁজে পাওয়া যায়নি" : "Not found") : (bn ? "কোনো ভাড়াটিয়া নেই" : "No tenants")}</div>
+        </div> : <div className="G" style={{ overflow: "hidden" }}>
+          {filteredTenants.map(t => {
+            const ll = getLL(t.landlordId);
+            const u = getUnit(t.unitId);
+            const p = u ? getProp(u.propertyId) : null;
+            const tPay = mPay.filter(x => x.tenantId === t.id);
+            const paid = tPay.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+            const isMoved = t.status === "moved_out";
+            return <div key={t.id} className="row" style={{ padding: 14, opacity: isMoved ? .5 : 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                <div className="av" style={{ width: 40, height: 40, borderRadius: 10, fontSize: 16 }}>👤</div>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{t.name} {isMoved && <span style={{ fontSize: 11, color: "#EF4444" }}>({bn ? "চলে গেছে" : "moved out"})</span>}</div>
+                  <div style={{ fontSize: 12, color: "#64748B" }}>📞 {t.phone} • 🏠 {ll?.name || "?"} • {u?.unitNo || "—"} {p ? `(${p.name})` : ""}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    {t.unitId && <span className="badge bA" style={{ fontSize: 10 }}>{bn ? "সক্রিয়" : "Active"}</span>}
+                    {t.advance > 0 && <span className="badge bV" style={{ fontSize: 10 }}>💵 ৳{t.advance}</span>}
+                    {t.moveInDate && <span style={{ fontSize: 11, color: "#475569" }}>📅 {t.moveInDate}</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 800, color: "#34D399", fontSize: 16 }}>৳{bn ? FM(t.rent) : FE(t.rent)}</div>
+                {!isMoved && <div style={{ fontSize: 12, color: paid >= t.rent ? "#34D399" : "#F59E0B", fontWeight: 600 }}>
+                  {paid >= t.rent ? `✅ ${bn ? "পেইড" : "Paid"}` : `⏳ ৳${bn ? FM(paid) : FE(paid)}/${bn ? FM(t.rent) : FE(t.rent)}`}
+                </div>}
+              </div>
+            </div>;
+          })}
+        </div>}
+      </div>}
+
+      {/* ═══════════════════════════════════ */}
+      {/* ═══ PROPERTIES TAB ═══ */}
+      {/* ═══════════════════════════════════ */}
+      {tab === "properties" && <div style={{ animation: "fadeIn .3s" }}>
+        {properties.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🏘️</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#64748B" }}>{bn ? "কোনো বাড়ি নেই" : "No properties"}</div>
+        </div> : properties.map(p => {
+          const ll = getLL(p.landlordId);
+          const pu = units.filter(u => u.propertyId === p.id);
+          const occU = pu.filter(u => !u.isVacant);
+          const vacU = pu.filter(u => u.isVacant);
+          const pTenants = tenants.filter(t => pu.some(u => u.id === t.unitId));
+          const totalRent = pTenants.reduce((s, t) => s + (Number(t.rent) || 0), 0);
+          return <div key={p.id} className="G2" style={{ padding: 18, marginBottom: 12, borderLeft: `3px solid ${p.color || "#8B5CF6"}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontWeight: 800, color: "#fff", fontSize: 17 }}>{p.name}</div>
+                <div style={{ fontSize: 13, color: "#64748B" }}>📍 {p.address} • 🏠 {ll?.name || "?"}</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 800, color: "#A78BFA", fontSize: 16 }}>৳{bn ? FM(totalRent) : FE(totalRent)}</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>{bn ? "মাসিক ভাড়া" : "monthly rent"}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <span className="badge bA">{occU.length} {bn ? "ভাড়া" : "occupied"}</span>
+              <span className="badge bV">{vacU.length} {bn ? "খালি" : "vacant"}</span>
+              <span className="badge" style={{ background: "rgba(255,255,255,.04)", color: "#94A3B8" }}>{p.floors} {bn ? "তলা" : "floors"}</span>
+            </div>
+            {/* Unit grid */}
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(pu.length, 6)}, 1fr)`, gap: 6 }}>
+              {pu.map(u => {
+                const t = tenants.find(x => x.unitId === u.id);
+                return <div key={u.id} style={{ padding: "8px 6px", borderRadius: 8, textAlign: "center", background: u.isVacant ? "rgba(59,130,246,.04)" : "rgba(16,185,129,.04)", border: `1px solid ${u.isVacant ? "rgba(59,130,246,.1)" : "rgba(16,185,129,.1)"}`, fontSize: 11 }}>
+                  <div style={{ fontWeight: 800, color: "#fff", fontSize: 13 }}>{u.unitNo}</div>
+                  {t ? <div style={{ fontSize: 10, color: "#34D399", marginTop: 2 }}>{t.name?.split(" ")[0]}</div>
+                    : <div style={{ fontSize: 10, color: "#60A5FA" }}>{bn ? "খালি" : "Vacant"}</div>}
+                </div>;
+              })}
             </div>
           </div>;
         })}
-        {tenants.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#475569" }}>{bn ? "কেউ নেই" : "None"}</div>}
       </div>}
 
-      {tab === "payments" && <div className="G" style={{ overflow: "hidden" }}>
-        {mPay.map(p => {
-          const t = tenants.find(x => x.id === p.tenantId);
-          const pm = PAY.find(m => m.k === p.method);
-          return <div key={p.id} className="row">
-            <div><div style={{ fontWeight: 600, fontSize: 12 }}>{t?.name || "?"}</div><div style={{ fontSize: 12, color: "#475569" }}>{p.paidAt?.split("T")[0]}</div></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: `${pm?.c || "#666"}12`, color: pm?.c }}>{pm?.i} {pm?.l}</span>
-              <span style={{ fontWeight: 800, color: "#fff" }}>৳{bn ? FM(p.amount) : FE(p.amount)}</span>
+      {/* ═══════════════════════════════════ */}
+      {/* ═══ PAYMENTS TAB ═══ */}
+      {/* ═══════════════════════════════════ */}
+      {tab === "payments" && <div style={{ animation: "fadeIn .3s" }}>
+        {/* Monthly summary */}
+        <div className="G" style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "#64748B" }}>{bn ? "ভাড়া" : "Rent"}</div>
+              <div style={{ fontWeight: 800, color: "#34D399", fontSize: 18 }}>৳{bn ? FM(rentCol) : FE(rentCol)}</div>
             </div>
-          </div>;
-        })}
-        {mPay.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#475569" }}>{bn ? "পেমেন্ট নেই" : "No payments"}</div>}
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "#64748B" }}>{bn ? "বিল" : "Bills"}</div>
+              <div style={{ fontWeight: 800, color: "#FBBF24", fontSize: 18 }}>৳{bn ? FM(utilCol) : FE(utilCol)}</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "#64748B" }}>{bn ? "মোট" : "Total"}</div>
+              <div style={{ fontWeight: 800, color: "#fff", fontSize: 18 }}>৳{bn ? FM(totCol) : FE(totCol)}</div>
+            </div>
+          </div>
+        </div>
+
+        {mPay.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>💰</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#64748B" }}>{bn ? "এই মাসে কোনো পেমেন্ট নেই" : "No payments this month"}</div>
+        </div> : <div className="G" style={{ overflow: "hidden" }}>
+          {mPay.sort((a, b) => (b.paidAt || "").localeCompare(a.paidAt || "")).map(p => {
+            const t = tenants.find(x => x.id === p.tenantId);
+            const ll = t ? getLL(t.landlordId) : null;
+            const pm = PAY.find(m => m.k === p.method);
+            const isRent = !p.type || p.type === "rent";
+            return <div key={p.id} className="row" style={{ padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: isRent ? "rgba(16,185,129,.06)" : "rgba(251,191,36,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+                  {isRent ? "🏠" : "📄"}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{t?.name || "?"}</div>
+                  <div style={{ fontSize: 12, color: "#64748B" }}>{isRent ? (bn ? "ভাড়া" : "Rent") : p.type} • {p.paidAt?.split("T")[0]} • {pm?.i} {pm?.l}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{bn ? "বাড়িওয়ালা" : "Landlord"}: {ll?.name || "?"}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, color: "#fff", fontSize: 16 }}>৳{bn ? FM(p.amount) : FE(p.amount)}</div>
+                  <span className="badge bP" style={{ fontSize: 10 }}>{p.status === "paid" ? "✅" : "◐"}</span>
+                </div>
+                {onDeletePayment && <button className="btn bd" style={{ padding: "6px 10px", fontSize: 11 }} onClick={() => { if (confirm(bn ? "এই পেমেন্ট মুছে ফেলবেন?" : "Delete this payment?")) onDeletePayment(p.id); }}>🗑️</button>}
+              </div>
+            </div>;
+          })}
+        </div>}
       </div>}
 
-      {tab === "logs" && <div className="G" style={{ overflow: "hidden" }}>
-        {logs.slice(0, 50).map(l => <div key={l.id} className="row">
-          <div><div style={{ fontSize: 12, color: "#94A3B8" }}>{l.detail}</div><div style={{ fontSize: 12, color: "#334155" }}>{l.action}</div></div>
-          <span style={{ fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>{l.ts ? new Date(l.ts).toLocaleString() : ""}</span>
-        </div>)}
-        {logs.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#475569" }}>{bn ? "কিছু নেই" : "Empty"}</div>}
+      {/* ═══════════════════════════════════ */}
+      {/* ═══ LOGS TAB ═══ */}
+      {/* ═══════════════════════════════════ */}
+      {tab === "logs" && <div style={{ animation: "fadeIn .3s" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700 }}>📋 {bn ? "কার্যকলাপ লগ" : "Activity Logs"}</h3>
+          <span style={{ fontSize: 12, color: "#64748B" }}>{bn ? "সর্বশেষ ১০০টি" : "Latest 100"}</span>
+        </div>
+        {logs.length === 0 ? <div className="G2" style={{ padding: 40, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>📋</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#64748B" }}>{bn ? "কোনো লগ নেই" : "No logs"}</div>
+        </div> : <div className="G" style={{ overflow: "hidden" }}>
+          {logs.slice(0, 100).map(l => <div key={l.id} className="row" style={{ padding: "10px 16px" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, color: "#E2E8F0", fontWeight: 600 }}>{l.detail}</div>
+              <div style={{ fontSize: 12, color: "#475569" }}>
+                <span className="badge" style={{ fontSize: 10, padding: "2px 8px", background: "rgba(139,92,246,.08)", color: "#A78BFA" }}>{l.action}</span>
+              </div>
+            </div>
+            <span style={{ fontSize: 12, color: "#475569", whiteSpace: "nowrap" }}>{l.ts ? new Date(l.ts).toLocaleString("bn-BD") : ""}</span>
+          </div>)}
+        </div>}
       </div>}
 
-      {tab === "overview" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="rg">
-        <div className="G" style={{ padding: 20 }}>
-          <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>🏠 {bn ? "বাড়িওয়ালা" : "Landlords"}</h4>
-          {landlords.map(l => <div key={l.id} className="row">
-            <div style={{ fontWeight: 600, fontSize: 12 }}>{l.name} • {l.phone}</div>
-            <div style={{ fontFamily: "monospace", fontSize: 12, color: "#34D399" }}>{l.inviteCode}</div>
-          </div>)}
-          {!landlords.length && <div style={{ color: "#334155", padding: 16, textAlign: "center" }}>{bn ? "কেউ নেই" : "None"}</div>}
-        </div>
-        <div className="G" style={{ padding: 20 }}>
-          <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>📋 {bn ? "সাম্প্রতিক" : "Recent"}</h4>
-          {logs.slice(0, 8).map(l => <div key={l.id} style={{ padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.02)", fontSize: 12 }}>
-            <div style={{ color: "#94A3B8" }}>{l.detail}</div>
-            <div style={{ fontSize: 12, color: "#334155" }}>{l.ts ? new Date(l.ts).toLocaleString() : ""}</div>
-          </div>)}
-          {!logs.length && <div style={{ color: "#334155", padding: 16, textAlign: "center" }}>{bn ? "কিছু নেই" : "None"}</div>}
-        </div>
-      </div>}
     </div>
   </div>;
 }
