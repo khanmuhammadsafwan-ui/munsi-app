@@ -447,55 +447,104 @@ export default function App() {
 function CSS() {
   return <style>{`
     *{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+    body{overscroll-behavior-y:contain}
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideFromBottom{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
     @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
     @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-    .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;background:linear-gradient(135deg,#10B981,#059669);color:#fff;padding:12px 28px;border-radius:14px;font-weight:700;font-size:14px;box-shadow:0 8px 30px rgba(16,185,129,.35);animation:slideUp .3s}
+    .toast{position:fixed;top:env(safe-area-inset-top,14px);left:50%;transform:translateX(-50%);z-index:9999;background:linear-gradient(135deg,#10B981,#059669);color:#fff;padding:12px 28px;border-radius:14px;font-weight:700;font-size:14px;box-shadow:0 8px 30px rgba(16,185,129,.35);animation:slideUp .3s;max-width:90vw;text-align:center}
     .G{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:16px}
     .G2{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:20px}
     .CH{transition:all .2s;cursor:pointer}.CH:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.12);box-shadow:0 6px 24px rgba(0,0,0,.2)}
-    .btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:14px;transition:all .15s;display:inline-flex;align-items:center;gap:8px;justify-content:center}
-    .btn:active{transform:scale(.97)}
+    .btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:14px;transition:all .15s;display:inline-flex;align-items:center;gap:8px;justify-content:center;min-height:44px}
+    .btn:active{transform:scale(.96);opacity:.85}
     .bp{background:linear-gradient(135deg,#10B981,#059669);color:#fff}.bp:hover{box-shadow:0 4px 16px rgba(16,185,129,.3)}
     .bg{background:rgba(255,255,255,.04);color:#94A3B8;border:1px solid rgba(255,255,255,.07)}.bg:hover{background:rgba(255,255,255,.08);color:#fff}
     .bd{background:rgba(239,68,68,.08);color:#EF4444;border:1px solid rgba(239,68,68,.12)}
-    .bs{padding:7px 14px;font-size:12px;border-radius:10px}
-    .inp{width:100%;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);color:#E2E8F0;font-family:inherit;font-size:14px;transition:border-color .2s}
+    .bs{padding:7px 14px;font-size:12px;border-radius:10px;min-height:36px}
+    .inp{width:100%;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);color:#E2E8F0;font-family:inherit;font-size:16px;transition:border-color .2s}
     .inp:focus{outline:none;border-color:#10B981;box-shadow:0 0 0 3px rgba(16,185,129,.08)}
     .inp::placeholder{color:rgba(255,255,255,.18)}
     select.inp{appearance:none;padding-right:36px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M8 12L2 6h12z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
     select.inp option{background:#1a2235;color:#E2E8F0}
     textarea.inp{resize:vertical;min-height:70px}
-    .lbl{font-size:12px;font-weight:700;color:#64748B;margin-bottom:5px;display:block}
+    .lbl{font-size:13px;font-weight:700;color:#64748B;margin-bottom:5px;display:block}
     .badge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:4px}
     .bP{background:rgba(16,185,129,.1);color:#34D399}.bD{background:rgba(245,158,11,.1);color:#F59E0B}.bPa{background:rgba(249,115,22,.1);color:#F97316}
     .bV{background:rgba(59,130,246,.1);color:#60A5FA}.bA{background:rgba(16,185,129,.1);color:#34D399}
-    .ov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .12s;padding:16px}
-    .mdl{background:linear-gradient(155deg,#1a2540,#111a2e);border:1px solid rgba(255,255,255,.07);border-radius:22px;padding:28px;width:100%;max-width:500px;max-height:88vh;overflow-y:auto;animation:slideUp .2s}
+    .ov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;z-index:1000;animation:fadeIn .12s;padding:0}
+    .mdl{background:linear-gradient(155deg,#1a2540,#111a2e);border:1px solid rgba(255,255,255,.07);border-radius:22px 22px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));width:100%;max-width:500px;max-height:92vh;overflow-y:auto;animation:slideFromBottom .25s}
     .mdl::-webkit-scrollbar{width:3px}.mdl::-webkit-scrollbar-thumb{background:rgba(255,255,255,.06);border-radius:3px}
+    .mdl-handle{width:40px;height:4px;background:rgba(255,255,255,.12);border-radius:2px;margin:0 auto 16px}
     .av{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;overflow:hidden}
     .av img{width:100%;height:100%;object-fit:cover}
-    .row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.025);transition:background .12s}
-    .row:hover{background:rgba(255,255,255,.015)}
-    .uc{padding:14px;border-radius:14px;text-align:center;cursor:pointer;transition:all .15s;border:1px solid transparent}
-    .uc:hover{transform:scale(1.02)}.uv{background:rgba(59,130,246,.03);border-color:rgba(59,130,246,.1)}.uo{background:rgba(16,185,129,.03);border-color:rgba(16,185,129,.1)}
+    .row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.025);transition:background .12s;min-height:56px}
+    .row:active{background:rgba(255,255,255,.03)}
+    .uc{padding:14px;border-radius:14px;text-align:center;cursor:pointer;transition:all .15s;border:1px solid transparent;min-height:80px}
+    .uc:active{transform:scale(.97)}.uv{background:rgba(59,130,246,.03);border-color:rgba(59,130,246,.1)}.uo{background:rgba(16,185,129,.03);border-color:rgba(16,185,129,.1)}
     .invite-box{background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(59,130,246,.06));border:2px dashed rgba(16,185,129,.25);border-radius:16px;padding:20px;text-align:center}
     .code{font-size:32px;font-weight:800;letter-spacing:4px;color:#34D399;font-family:monospace}
-    .gbtn{width:100%;padding:14px 20px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#E2E8F0;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;transition:all .15s}
-    .gbtn:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15)}
+    .gbtn{width:100%;padding:14px 20px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#E2E8F0;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;transition:all .15s;min-height:52px}
+    .gbtn:active{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15)}
     .gbtn img{width:20px;height:20px}
-    .search-bar{width:100%;padding:14px 16px 14px 42px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);color:#E2E8F0;font-family:inherit;font-size:14px}
+    .search-bar{width:100%;padding:14px 16px 14px 42px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);color:#E2E8F0;font-family:inherit;font-size:16px}
     .search-bar:focus{outline:none;border-color:#10B981;box-shadow:0 0 0 3px rgba(16,185,129,.08)}
     .search-bar::placeholder{color:rgba(255,255,255,.2)}
-    .main-tab{padding:12px 24px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:700;white-space:nowrap;transition:all .15s;border:1px solid transparent;flex:1;text-align:center}
+    .main-tab{padding:12px 20px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:700;white-space:nowrap;transition:all .15s;border:1px solid transparent;flex:1;text-align:center;min-height:44px;display:flex;align-items:center;justify-content:center}
     .main-tab.active{background:rgba(16,185,129,.1);color:#34D399;border-color:rgba(16,185,129,.2)}
     .main-tab:not(.active){color:#64748B}
-    .quick-act{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 8px;border-radius:14px;cursor:pointer;transition:all .15s;flex:1;text-align:center}
-    .quick-act:hover{transform:translateY(-2px)}
+    .quick-act{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 8px;border-radius:14px;cursor:pointer;transition:all .15s;flex:1;text-align:center;min-height:72px}
+    .quick-act:active{transform:scale(.95);opacity:.85}
     .success-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
-    .success-card{background:linear-gradient(155deg,#1a2540,#111a2e);border:2px solid rgba(16,185,129,.3);border-radius:24px;padding:40px;text-align:center;animation:slideUp .3s;max-width:360px;width:90%}
-    @media(max-width:640px){.rg{grid-template-columns:1fr!important}.rg2{grid-template-columns:1fr 1fr!important}}
+    .success-card{background:linear-gradient(155deg,#1a2540,#111a2e);border:2px solid rgba(16,185,129,.3);border-radius:24px;padding:40px 24px;text-align:center;animation:slideUp .3s;max-width:360px;width:92%}
+    /* ═══ BOTTOM NAV ═══ */
+    .btm-nav{position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(6,11,22,.97);backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,.05);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-around;align-items:center}
+    .btm-nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 12px;border-radius:12px;cursor:pointer;transition:all .15s;position:relative;min-width:60px}
+    .btm-nav-item.active{background:rgba(16,185,129,.08)}
+    .btm-nav-item .nav-icon{font-size:20px;line-height:1}
+    .btm-nav-item .nav-label{font-size:10px;font-weight:600;color:#64748B}
+    .btm-nav-item.active .nav-label{color:#34D399}
+    .btm-nav-badge{position:absolute;top:0;right:6px;width:16px;height:16px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center}
+    /* ═══ TOP BAR MOBILE ═══ */
+    .top-bar{position:sticky;top:0;z-index:100;background:rgba(6,11,22,.95);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.04);padding:10px 16px env(safe-area-inset-top,0px)}
+    .top-bar-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:8px}
+    /* ═══ ACCORDION MENU ═══ */
+    .acc-item{border-radius:16px;overflow:hidden;margin-bottom:8px;border:1px solid rgba(255,255,255,.04);transition:all .2s}
+    .acc-item.open{border-color:rgba(16,185,129,.12)}
+    .acc-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;cursor:pointer;min-height:56px;transition:background .15s}
+    .acc-head:active{background:rgba(255,255,255,.03)}
+    .acc-head-left{display:flex;align-items:center;gap:12px}
+    .acc-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+    .acc-arrow{font-size:12px;color:#475569;transition:transform .2s}
+    .acc-item.open .acc-arrow{transform:rotate(90deg);color:#34D399}
+    .acc-body{padding:0 18px 16px;animation:fadeIn .2s}
+    .acc-sub{margin-left:12px;padding-left:12px;border-left:2px solid rgba(255,255,255,.04)}
+    .acc-sub-item{padding:12px 14px;border-radius:12px;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.015);min-height:48px}
+    .acc-sub-item:active{background:rgba(255,255,255,.04)}
+    .acc-label{font-size:13px;color:#94A3B8;font-weight:600}
+    .acc-value{font-size:14px;color:#E2E8F0;font-weight:600;text-align:right}
+    /* ═══ CONTENT AREA ═══ */
+    .content-area{max-width:1100px;margin:0 auto;padding:14px 14px calc(80px + env(safe-area-inset-bottom,0px))}
+    /* ═══ MOBILE RESPONSIVE ═══ */
+    @media(max-width:640px){
+      .rg{grid-template-columns:1fr!important}
+      .rg2{grid-template-columns:1fr 1fr!important}
+      .main-tab{padding:10px 14px;font-size:13px}
+      .mdl{border-radius:20px 20px 0 0;max-height:94vh;padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px))}
+      .ov{align-items:flex-end}
+      .quick-act{padding:12px 4px}
+      .hide-mobile{display:none!important}
+      .top-bar{padding:8px 12px}
+    }
+    @media(min-width:641px){
+      .hide-desktop{display:none!important}
+      .ov{align-items:center;padding:16px}
+      .mdl{border-radius:22px;max-height:88vh}
+      .btm-nav{display:none}
+      .content-area{padding:16px 16px 40px}
+    }
   `}</style>;
 }
 
@@ -1025,19 +1074,19 @@ function RegTenant({ bn, user, onReg, onBack }) {
 
 // ═══ TOP BAR ═══
 function Bar({ bn, lang, setLang, label, icon, user, onLogout, onRefresh, children }) {
-  return <div style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(6,11,22,.93)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,.035)", padding: "10px 16px" }}>
-    <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+  return <div className="top-bar">
+    <div className="top-bar-inner">
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 22 }}>📒</span>
-        <div><div style={{ fontSize: 15, fontWeight: 800, background: "linear-gradient(135deg,#34D399,#60A5FA)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", lineHeight: 1 }}>মুন্সী</div>
-          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, letterSpacing: 1 }}>{icon} {label}</div></div>
+        <span style={{ fontSize: 20 }}>📒</span>
+        <div><div style={{ fontSize: 14, fontWeight: 800, background: "linear-gradient(135deg,#34D399,#60A5FA)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", lineHeight: 1 }}>মুন্সী</div>
+          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{icon} {label}</div></div>
       </div>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
         {children}
-        {user && <div style={{ fontSize: 11, color: "#64748B", padding: "4px 10px", background: "rgba(255,255,255,.025)", borderRadius: 8 }}>{icon} {user}</div>}
+        <span className="hide-mobile" style={{ fontSize: 11, color: "#64748B", padding: "4px 8px", background: "rgba(255,255,255,.025)", borderRadius: 8 }}>{icon} {user}</span>
         {onRefresh && <button className="btn bg bs" onClick={onRefresh} title="Refresh">🔄</button>}
-        <button className="btn bg bs" onClick={() => setLang(bn ? "en" : "bn")}>{bn ? "EN" : "বাং"}</button>
-        <button className="btn bd bs" onClick={onLogout}>{bn ? "বের হন" : "Exit"}</button>
+        <button className="btn bg bs" onClick={() => setLang(bn ? "en" : "bn")} style={{ padding: "6px 10px" }}>{bn ? "EN" : "বাং"}</button>
+        <button className="btn bd bs" onClick={onLogout} style={{ padding: "6px 10px" }}>{bn ? "🚪" : "🚪"}</button>
       </div>
     </div>
   </div>;
@@ -1098,7 +1147,7 @@ function AdminPanel({ db, notices, agreements, expenses, meters, bn, lang, setLa
         {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
       </select>
     </Bar>
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 16px 40px" }}>
+    <div className="content-area" style={{ maxWidth: 1200 }}>
 
       {/* ═══ TAB NAV ═══ */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, overflowX: "auto", paddingBottom: 4 }}>
@@ -1483,6 +1532,12 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
   const [subTab, setSubTab] = useState("properties");
   const [selNotice, setSelNotice] = useState(null);
   const [searchQ, setSearchQ] = useState("");
+  const [openAcc, setOpenAcc] = useState({});
+  const [openProp, setOpenProp] = useState(null);
+  const toggleAcc = (k) => setOpenAcc(o => ({ ...o, [k]: !o[k] }));
+
+  // Generate User ID
+  const userId = me?.id ? `BA${(me.id).slice(-8).toUpperCase().padStart(8, "X")}` : "BAXXXXXXXX";
 
   const UTIL_TYPES = [
     { k: "electricity", l: bn ? "বিদ্যুৎ" : "Electricity", i: "⚡", c: "#FBBF24" },
@@ -1541,18 +1596,27 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       <div onClick={() => setModal("paymentInfo")} style={{ cursor: "pointer", padding: "6px 10px", borderRadius: 10 }} title={bn ? "পেমেন্ট তথ্য" : "Payment Info"}>
         <span style={{ fontSize: 18 }}>💳</span>
       </div>
-      <div onClick={() => setTab2("notices")} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab2 === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
-        <span style={{ fontSize: 18 }}>📨</span>
-        {totalAlerts > 0 && <span style={{ position: "absolute", top: 2, right: 4, width: 16, height: 16, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{totalAlerts}</span>}
-      </div>
-      <select className="inp" style={{ width: "auto", padding: "5px 28px 5px 8px", fontSize: 12 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
+      <select className="inp" style={{ width: "auto", padding: "5px 24px 5px 8px", fontSize: 12, minHeight: 32 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
         {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
       </select>
     </Bar>
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 40px" }}>
 
-      {/* ═══ 3 MAIN TABS ═══ */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+    {/* ═══ BOTTOM NAV (mobile) ═══ */}
+    <div className="btm-nav">
+      {[{ k: "dashboard", i: "🏠", l: bn ? "হোম" : "Home" },
+        { k: "hisab", i: "💼", l: bn ? "হিসাব" : "Accounts" },
+        { k: "notices", i: "📨", l: bn ? "নোটিশ" : "Notices", badge: totalAlerts },
+      ].map(t => <div key={t.k} className={`btm-nav-item${tab2 === t.k ? " active" : ""}`} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); setSelNotice(null); }}>
+        <span className="nav-icon">{t.i}</span>
+        <span className="nav-label">{t.l}</span>
+        {t.badge > 0 && <span className="btm-nav-badge">{t.badge}</span>}
+      </div>)}
+    </div>
+
+    <div className="content-area">
+
+      {/* ═══ 3 MAIN TABS (desktop) ═══ */}
+      <div className="hide-mobile" style={{ display: "flex", gap: 6, marginBottom: 18 }}>
         {[{ k: "dashboard", l: bn ? "🏠 ড্যাশবোর্ড" : "🏠 Dashboard" },
           { k: "hisab", l: bn ? "💼 হিসাব-নিকাশ" : "💼 Accounts" },
           { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${totalAlerts ? ` (${totalAlerts})` : ""}` },
@@ -1560,151 +1624,398 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       </div>
 
       {/* ═══════════════════════════════ */}
-      {/* ═══ DASHBOARD TAB ═══ */}
+      {/* ═══ DASHBOARD / PROFILE TAB ═══ */}
       {/* ═══════════════════════════════ */}
       {tab2 === "dashboard" && <div style={{ animation: "fadeIn .3s" }}>
 
-        {/* ONBOARDING — first time user */}
-        {properties.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", animation: "fadeIn .5s" }}>
-          <div style={{ fontSize: 60, marginBottom: 12 }}>🏠</div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 8 }}>{bn ? "মুন্সীতে স্বাগতম!" : "Welcome to Munsi!"}</h2>
-          <p style={{ fontSize: 14, color: "#64748B", marginBottom: 24, lineHeight: 1.6 }}>
-            {bn ? "আপনার বাড়ি ভাড়ার হিসাব রাখতে নিচের ধাপগুলো অনুসরণ করুন:" : "Follow these steps to start managing your property:"}
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 360, margin: "0 auto", textAlign: "left" }}>
-            {[{ n: "1", i: "🏘️", t: bn ? "বাড়ি যোগ করুন" : "Add your property", d: bn ? "বাড়ির নাম, ঠিকানা, তলা ও ইউনিট সংখ্যা দিন" : "Enter property name, address, floors & units", act: () => setModal("addProp"), btn: bn ? "বাড়ি যোগ করুন →" : "Add Property →" },
-              { n: "2", i: "👤", t: bn ? "ভাড়াটিয়া যোগ করুন" : "Add tenants", d: bn ? "ভাড়াটিয়ার নাম, ফোন, ভাড়া দিন" : "Add tenant name, phone, rent amount" },
-              { n: "3", i: "💰", t: bn ? "ভাড়া আদায় শুরু করুন" : "Start collecting rent", d: bn ? "এক ক্লিকে ভাড়া আদায় ও রসিদ পাঠান" : "One-click rent collection & receipts" },
-            ].map((s, i) => <div key={i} className="G2" style={{ padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(16,185,129,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{s.i}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{s.t}</div>
-                <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{s.d}</div>
+        {/* ═══ USER ID BADGE ═══ */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "14px 18px", borderRadius: 16, background: "linear-gradient(135deg, rgba(16,185,129,.06), rgba(59,130,246,.04))", border: "1px solid rgba(16,185,129,.1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="av" style={{ width: 48, height: 48, background: "rgba(16,185,129,.08)", fontSize: 22 }}>🏠</div>
+            <div>
+              <div style={{ fontWeight: 800, color: "#fff", fontSize: 16 }}>{me?.name || "—"}</div>
+              <div style={{ fontSize: 12, color: "#34D399", fontFamily: "monospace", letterSpacing: 1 }}>🆔 {userId}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {totalAlerts > 0 && <div onClick={() => setTab2("notices")} style={{ position: "relative", cursor: "pointer", padding: 8 }}>
+              <span style={{ fontSize: 20 }}>🔔</span>
+              <span style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{totalAlerts}</span>
+            </div>}
+          </div>
+        </div>
+
+        {/* ═══ ACCORDION MENU ═══ */}
+
+        {/* 1. নাম / প্রফাইল */}
+        <div className={`acc-item${openAcc.profile ? " open" : ""}`} style={{ background: openAcc.profile ? "rgba(16,185,129,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("profile")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(99,102,241,.08)" }}>👤</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "নাম / প্রফাইল" : "Name / Profile"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{me?.phone || me?.email || ""}</div>
               </div>
-              {s.act && <button className="btn bp bs" onClick={s.act} style={{ fontSize: 11, whiteSpace: "nowrap" }}>{s.btn}</button>}
-            </div>)}
+            </div>
+            <span className="acc-arrow">▶</span>
           </div>
-        </div>}
+          {openAcc.profile && <div className="acc-body">
+            <div className="acc-sub">
+              <div className="acc-sub-item">
+                <span className="acc-label">📞 {bn ? "মোবাইল নাম্বার" : "Mobile"}</span>
+                <span className="acc-value">{me?.phone || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">✉️ {bn ? "ইমেইল" : "Email"}</span>
+                <span className="acc-value" style={{ fontSize: 12 }}>{me?.email || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">🪪 NID {bn ? "নাম্বার" : "Number"}</span>
+                <span className="acc-value">{me?.nid || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">📋 LICENSE / TIN</span>
+                <span className="acc-value">{me?.tinNo || me?.holdingNo || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">📍 {bn ? "ঠিকানা" : "Address"}</span>
+                <span className="acc-value" style={{ fontSize: 12 }}>{me?.address || me?.location || "—"}</span>
+              </div>
+              <button className="btn bp" style={{ width: "100%", marginTop: 8 }} onClick={() => setModal("editProfile")}>✏️ {bn ? "প্রফাইল সম্পাদনা" : "Edit Profile"}</button>
+            </div>
+          </div>}
+        </div>
 
-        {/* DASHBOARD CONTENT (when properties exist) */}
-        {properties.length > 0 && <>
-
-          {/* Search Bar */}
-          <div style={{ position: "relative", marginBottom: 16 }}>
-            <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16, opacity: .4 }}>🔍</span>
-            <input className="search-bar" placeholder={bn ? "ভাড়াটিয়ার নাম দিয়ে খুঁজুন..." : "Search tenants by name..."} value={searchQ} onChange={e => setSearchQ(e.target.value)} />
-            {searchQ && <span onClick={() => setSearchQ("")} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, opacity: .4 }}>✕</span>}
+        {/* 2. লেনদেনের মাধ্যম */}
+        <div className={`acc-item${openAcc.payment ? " open" : ""}`} style={{ background: openAcc.payment ? "rgba(251,191,36,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("payment")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(251,191,36,.08)" }}>💳</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "লেনদেনের মাধ্যম" : "Payment Methods"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{bn ? "bKash, Nagad, ব্যাংক" : "bKash, Nagad, Bank"}</div>
+              </div>
+            </div>
+            <span className="acc-arrow">▶</span>
           </div>
+          {openAcc.payment && <div className="acc-body">
+            <div className="acc-sub">
+              <div className="acc-sub-item">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>📱</span>
+                  <span className="acc-label">bKash</span>
+                </div>
+                <span className="acc-value" style={{ color: "#E2136E" }}>{me?.bkash || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>📱</span>
+                  <span className="acc-label">Nagad</span>
+                </div>
+                <span className="acc-value" style={{ color: "#F6921E" }}>{me?.nagad || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>🏦</span>
+                  <span className="acc-label">Bank Account</span>
+                </div>
+                <span className="acc-value" style={{ fontSize: 12 }}>{me?.bank || "—"}</span>
+              </div>
+              <button className="btn bp" style={{ width: "100%", marginTop: 8 }} onClick={() => setModal("paymentInfo")}>✏️ {bn ? "পেমেন্ট তথ্য সম্পাদনা" : "Edit Payment Info"}</button>
+            </div>
+          </div>}
+        </div>
 
-          {/* Search Results */}
-          {searchQ && <div style={{ marginBottom: 16 }}>
-            {filteredTenants.length === 0 ? <div className="G" style={{ padding: 20, textAlign: "center", color: "#475569", fontSize: 13 }}>
-              😕 {bn ? `"${searchQ}" পাওয়া যায়নি` : `No results for "${searchQ}"`}
-            </div> : <div className="G">
-              {filteredTenants.map(t => {
-                const u = units.find(x => x.id === t.unitId);
-                const p2 = properties.find(x => x.id === u?.propertyId);
-                const paid = paidSet.has(t.id);
-                return <div key={t.id} className="row" onClick={() => { setSearchQ(""); setEdit(t); setModal("detail"); }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div className="av" style={{ width: 36, height: 36, fontSize: 16 }}>👤</div>
+        {/* 3. বাড়ির বিবরণ */}
+        <div className={`acc-item${openAcc.bari ? " open" : ""}`} style={{ background: openAcc.bari ? "rgba(139,92,246,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("bari")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(139,92,246,.08)" }}>🏘️</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "বাড়ির বিবরণ" : "Property Details"} <span className="badge bA" style={{ fontSize: 10 }}>{properties.length} {bn ? "টি" : ""}</span></div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{units.length} {bn ? "টি ইউনিট" : "units"} • {units.filter(u => !u.isVacant).length} {bn ? "ভাড়া" : "occupied"}</div>
+              </div>
+            </div>
+            <span className="acc-arrow">▶</span>
+          </div>
+          {openAcc.bari && <div className="acc-body">
+            {properties.length === 0 ? <div style={{ textAlign: "center", padding: 20 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>🏠</div>
+              <p style={{ color: "#475569", fontSize: 13, marginBottom: 12 }}>{bn ? "এখনো কোনো বাড়ি যোগ করেননি" : "No properties added yet"}</p>
+              <button className="btn bp" onClick={() => setModal("addProp")}>➕ {bn ? "বাড়ি যোগ করুন" : "Add Property"}</button>
+            </div> : <div className="acc-sub">
+              {/* Each Property — nested accordion */}
+              {properties.map(p => {
+                const pu = units.filter(u => u.propertyId === p.id);
+                const occU = pu.filter(u => !u.isVacant);
+                const vacU = pu.filter(u => u.isVacant);
+                const pFloors = [...new Set(pu.map(u => u.floor))].sort((a, b) => a - b);
+                const isOpen = openProp === p.id;
+                return <div key={p.id} style={{ marginBottom: 6 }}>
+                  <div className="acc-sub-item" onClick={() => setOpenProp(isOpen ? null : p.id)} style={{ cursor: "pointer", borderLeft: `3px solid ${p.color || "#8B5CF6"}`, background: isOpen ? "rgba(139,92,246,.04)" : undefined }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: "#64748B" }}>{u?.unitNo} • {p2?.name}</div>
+                      <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: "#475569" }}>
+                        {pFloors.length > 0 ? `${pFloors.length} ${bn ? "তলা" : "floors"}` : bn ? "টিন শেড" : "Tin Shed"}, {pu.length}{bn ? "টি " : " "}{bn ? (pu.length > 10 ? "রুম" : "ফ্ল্যাট") : "units"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className="badge bA" style={{ fontSize: 10 }}>{occU.length}</span>
+                      <span className="badge bV" style={{ fontSize: 10 }}>{vacU.length}</span>
+                      <span className="acc-arrow" style={{ transform: isOpen ? "rotate(90deg)" : "none", color: isOpen ? "#A78BFA" : "#475569" }}>▶</span>
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 800, color: "#fff", fontSize: 14 }}>৳{bn ? FM(t.rent) : FE(t.rent)}</div>
-                    <span className={`badge ${paid ? "bP" : "bD"}`} style={{ fontSize: 11 }}>{paid ? "✅" : "⏳"}</span>
-                  </div>
+
+                  {/* Units inside this property */}
+                  {isOpen && <div style={{ marginLeft: 16, paddingLeft: 12, borderLeft: "2px solid rgba(139,92,246,.1)", animation: "fadeIn .2s" }}>
+                    {pu.map(u => {
+                      const t = tenants.find(x => x.unitId === u.id);
+                      const isPaid = t ? paidSet.has(t.id) : false;
+                      return <div key={u.id} className="acc-sub-item" style={{ marginTop: 4, cursor: t ? "pointer" : undefined }} onClick={() => { if (t) { setEdit(t); setModal("detail"); } else { setEdit({ unitId: u.id }); setModal("assign"); } }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: u.isVacant ? "rgba(59,130,246,.06)" : "rgba(16,185,129,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: u.isVacant ? "#60A5FA" : "#34D399" }}>{u.unitNo}</div>
+                          <div>
+                            {t ? <div style={{ fontWeight: 600, color: "#E2E8F0", fontSize: 13 }}>{t.name}</div>
+                              : <div style={{ fontSize: 12, color: "#60A5FA" }}>{bn ? "খালি — ক্লিক করে যোগ করুন" : "Vacant — click to assign"}</div>}
+                            {t && <div style={{ fontSize: 11, color: "#475569" }}>৳{bn ? FM(t.rent) : FE(t.rent)}/{bn ? "মাস" : "mo"}</div>}
+                          </div>
+                        </div>
+                        {t ? <div style={{ width: 24, height: 24, borderRadius: "50%", background: isPaid ? "rgba(16,185,129,.1)" : "rgba(239,68,68,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>
+                          {isPaid ? "✅" : "🔴"}
+                        </div> : <span style={{ fontSize: 11, color: "#60A5FA" }}>➕</span>}
+                      </div>;
+                    })}
+                  </div>}
                 </div>;
               })}
+              <button className="btn bp" style={{ width: "100%", marginTop: 10 }} onClick={() => setModal("addProp")}>➕ {bn ? "নতুন বাড়ি যোগ করুন" : "Add New Property"}</button>
             </div>}
           </div>}
+        </div>
 
-          {/* Summary Cards — 2 columns mobile friendly */}
-          {!searchQ && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }} className="rg2">
-            {[{ i: "💰", l: bn ? "মোট আদায়" : "Total Collected", v: `৳${bn ? FM(totalCollected) : FE(totalCollected)}`, c: "#34D399" },
-              { i: "⚠️", l: bn ? "বাকি আছে" : "Due", v: `${dueT.length} ${bn ? "জন" : "tenants"}`, c: dueT.length > 0 ? "#F59E0B" : "#34D399" },
-              { i: "📈", l: bn ? "নেট মুনাফা" : "Net Profit", v: `৳${bn ? FM(netProfit) : FE(netProfit)}`, c: netProfit >= 0 ? "#10B981" : "#EF4444" },
-              { i: "🏠", l: bn ? "দখলকৃত" : "Occupied", v: `${units.filter(u => !u.isVacant).length}/${units.length}`, c: "#6366F1" },
-            ].map((s, i) => <div key={i} className="G CH" style={{ padding: 18 }} onClick={() => setTab2("hisab")}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: 22 }}>{s.i}</span>
-                <span style={{ fontSize: 12, color: "#64748B" }}>{s.l}</span>
+        {/* 4. ভাড়াটিয়া যোগ করুণ */}
+        <div className={`acc-item${openAcc.addTenant ? " open" : ""}`} style={{ background: openAcc.addTenant ? "rgba(59,130,246,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("addTenant")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(59,130,246,.08)" }}>➕</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "ভাড়াটিয়া যোগ করুণ" : "Add Tenant"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{tenants.length} {bn ? "জন বর্তমান" : "current tenants"}</div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: s.c }}>{s.v}</div>
-            </div>)}
-          </div>}
-
-          {/* Quick Actions */}
-          {!searchQ && <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 18 }}>
-            {[{ i: "💰", l: bn ? "ভাড়া আদায়" : "Collect Rent", c: "rgba(16,185,129,.06)", bc: "rgba(16,185,129,.12)", act: () => { if (dueT.length > 0) { setEdit(dueT[0]); setModal("pay"); } else { setTab2("hisab"); setSubTab("payments"); } } },
-              { i: "⚡", l: bn ? "মিটার রিডিং" : "Meter", c: "rgba(251,191,36,.06)", bc: "rgba(251,191,36,.12)", act: () => setModal("addMeter") },
-              { i: "📨", l: bn ? "রিমাইন্ডার" : "Reminder", c: "rgba(239,68,68,.06)", bc: "rgba(239,68,68,.12)", act: () => setModal("llNotice") },
-              { i: "🏘️", l: bn ? "বাড়ি" : "Properties", c: "rgba(99,102,241,.06)", bc: "rgba(99,102,241,.12)", act: () => { setTab2("hisab"); setSubTab("properties"); } },
-            ].map((a, i) => <div key={i} className="quick-act" style={{ background: a.c, border: `1px solid ${a.bc}` }} onClick={a.act}>
-              <span style={{ fontSize: 24 }}>{a.i}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8" }}>{a.l}</span>
-            </div>)}
-          </div>}
-
-          {/* ═══ "কে দেয়নি" — Due List with ONE-TAP collection ═══ */}
-          {!searchQ && dueT.length > 0 && <div className="G2" style={{ padding: 18, marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#F59E0B" }}>⚠️ {bn ? `${(bn ? MBN : MEN)[selM]} — ভাড়া বাকি` : `${MEN[selM]} — Rent Due`}</h3>
-              <span className="badge bD">{dueT.length} {bn ? "জন" : ""}</span>
             </div>
-            {dueT.map(t => {
-              const u = units.find(x => x.id === t.unitId);
-              const p2 = properties.find(x => x.id === u?.propertyId);
-              return <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,.03)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flex: 1 }} onClick={() => { setEdit(t); setModal("detail"); }}>
-                  <div className="av" style={{ width: 38, height: 38, fontSize: 16, borderRadius: 10 }}>👤</div>
-                  <div>
-                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: "#64748B" }}>{u?.unitNo} • {p2?.name}</div>
+            <span className="acc-arrow">▶</span>
+          </div>
+          {openAcc.addTenant && <div className="acc-body">
+            <div className="acc-sub">
+              <p style={{ fontSize: 13, color: "#94A3B8", marginBottom: 12, lineHeight: 1.6 }}>
+                {bn ? "নতুন ভাড়াটিয়া যোগ করতে নিচের বাটনে ক্লিক করুন। তারিখ, বাড়ি/ফ্ল্যাট/রুম নাম্বার, নাম, মোবাইল, NID, ছবি দিন।" : "Click below to add a new tenant with date, unit, name, phone, NID, and photo."}
+              </p>
+              <button className="btn bp" style={{ width: "100%", marginBottom: 8 }} onClick={() => setModal("manualAdd")}>👤 {bn ? "ম্যানুয়াল ভাড়াটিয়া যোগ" : "Add Tenant Manually"}</button>
+              {unassigned.length > 0 && <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 12, color: "#F59E0B", marginBottom: 8, fontWeight: 700 }}>⏳ {unassigned.length} {bn ? "জন অ্যাসাইন করা হয়নি" : "unassigned"}</div>
+                {unassigned.map(t => <div key={t.id} className="acc-sub-item" style={{ marginBottom: 2 }}>
+                  <div><div style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</div><div style={{ fontSize: 11, color: "#475569" }}>{t.phone}</div></div>
+                  <span className="badge bD" style={{ fontSize: 10 }}>⏳</span>
+                </div>)}
+              </div>}
+            </div>
+          </div>}
+        </div>
+
+        {/* 5. মাসিক ভাড়া ও অন্যান্য */}
+        <div className={`acc-item${openAcc.monthly ? " open" : ""}`} style={{ background: openAcc.monthly ? "rgba(16,185,129,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("monthly")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(16,185,129,.08)" }}>💰</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "মাসিক ভাড়া ও অন্যান্য" : "Monthly Rent & Bills"}</div>
+                <div style={{ fontSize: 12, color: "#34D399", fontWeight: 700 }}>৳{bn ? FM(totalCollected) : FE(totalCollected)} {bn ? "আদায়" : "collected"}</div>
+              </div>
+            </div>
+            <span className="acc-arrow">▶</span>
+          </div>
+          {openAcc.monthly && <div className="acc-body">
+            <div className="acc-sub">
+              <div className="acc-sub-item">
+                <span className="acc-label">🏠 {bn ? "মাসিক ভাড়া" : "Monthly Rent"}</span>
+                <span className="acc-value" style={{ color: "#34D399" }}>৳{bn ? FM(rentCollected) : FE(rentCollected)}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">💵 {bn ? "অগ্রিম জমা" : "Advance Deposit"}</span>
+                <span className="acc-value">৳{bn ? FM(tenants.reduce((s, t) => s + (Number(t.advance) || 0), 0)) : FE(tenants.reduce((s, t) => s + (Number(t.advance) || 0), 0))}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">🔥 {bn ? "গ্যাস বিল" : "Gas Bill"}</span>
+                <span className="acc-value">৳{bn ? FM(mUtil.filter(p => p.type === "gas").reduce((s, p) => s + (Number(p.amount) || 0), 0)) : FE(mUtil.filter(p => p.type === "gas").reduce((s, p) => s + (Number(p.amount) || 0), 0))}</span>
+              </div>
+
+              {/* বিদ্যুৎ বিল — nested */}
+              <div className={`acc-item${openAcc.elec ? " open" : ""}`} style={{ margin: "4px 0", background: openAcc.elec ? "rgba(251,191,36,.03)" : "rgba(255,255,255,.015)" }}>
+                <div className="acc-head" onClick={() => toggleAcc("elec")} style={{ padding: "10px 14px" }}>
+                  <div className="acc-head-left">
+                    <span style={{ fontSize: 16 }}>⚡</span>
+                    <span className="acc-label">{bn ? "বিদ্যুৎ বিল" : "Electricity Bill"}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="acc-value" style={{ color: "#FBBF24" }}>৳{bn ? FM(mUtil.filter(p => p.type === "electricity").reduce((s, p) => s + (Number(p.amount) || 0), 0)) : FE(mUtil.filter(p => p.type === "electricity").reduce((s, p) => s + (Number(p.amount) || 0), 0))}</span>
+                    <span className="acc-arrow">▶</span>
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: "#F59E0B", fontSize: 15 }}>৳{bn ? FM(t.rent) : FE(t.rent)}</span>
-                  <button className="btn bp" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => { setEdit(t); setModal("pay"); }}>💰 {bn ? "আদায়" : "Collect"}</button>
-                </div>
-              </div>;
-            })}
-          </div>}
+                {openAcc.elec && <div className="acc-body">
+                  <div className="acc-sub-item">
+                    <span className="acc-label">{bn ? "প্রতি ইউনিট মূল্য" : "Per Unit Price"}</span>
+                    <span className="acc-value">{(meters || []).length > 0 ? `৳${(meters[0]?.rate || "—")}` : "—"}</span>
+                  </div>
+                  <div className="acc-sub-item">
+                    <span className="acc-label">{bn ? "বর্তমান ইউনিট" : "Current Reading"}</span>
+                    <span className="acc-value">{(meters || []).length > 0 ? (meters[meters.length - 1]?.currentReading || "—") : "—"}</span>
+                  </div>
+                  <div className="acc-sub-item">
+                    <span className="acc-label">{bn ? "গত মাসের ইউনিট" : "Previous Reading"}</span>
+                    <span className="acc-value">{(meters || []).length > 0 ? (meters[meters.length - 1]?.prevReading || "—") : "—"}</span>
+                  </div>
+                </div>}
+              </div>
 
-          {/* All Paid! */}
-          {!searchQ && dueT.length === 0 && tenants.filter(t => t.unitId).length > 0 && <div className="G2" style={{ padding: 24, textAlign: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 48, marginBottom: 8 }}>🎉</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#34D399" }}>{bn ? "সবাই ভাড়া পরিশোধ করেছে!" : "All rent paid!"}</div>
-            <div style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>{(bn ? MBN : MEN)[selM]} {selY}</div>
-          </div>}
-
-          {/* Recently Paid — last 5 */}
-          {!searchQ && mPay.length > 0 && <div className="G" style={{ padding: 16, marginBottom: 14 }}>
-            <h4 style={{ fontSize: 13, fontWeight: 700, color: "#64748B", marginBottom: 10, padding: "0 4px" }}>{bn ? "সাম্প্রতিক আদায়" : "Recent Collections"}</h4>
-            {mPay.slice(0, 5).map(p => {
-              const t = tenants.find(x => x.id === p.tenantId);
-              const isR = !p.type || p.type === "rent";
-              return <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 4px", borderBottom: "1px solid rgba(255,255,255,.02)", fontSize: 13 }}>
-                <span style={{ color: "#94A3B8" }}>{t?.name} — {isR ? (bn ? "ভাড়া" : "Rent") : p.type}</span>
-                <span style={{ fontWeight: 700, color: "#34D399" }}>৳{bn ? FM(p.amount) : FE(p.amount)}</span>
-              </div>;
-            })}
-          </div>}
-
-          {/* Notices preview */}
-          {!searchQ && totalAlerts > 0 && <div className="G CH" style={{ padding: 16 }} onClick={() => setTab2("notices")}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 22 }}>📨</span>
-              <div>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{totalAlerts} {bn ? "টি নতুন নোটিশ" : "new notices"}</div>
-                <div style={{ fontSize: 12, color: "#64748B" }}>{bn ? "দেখতে ক্লিক করুন" : "Click to view"}</div>
+              <div className="acc-sub-item">
+                <span className="acc-label">🔧 {bn ? "সার্ভিস চার্জ" : "Service Charge"}</span>
+                <span className="acc-value">৳{bn ? FM(mUtil.filter(p => p.type === "service").reduce((s, p) => s + (Number(p.amount) || 0), 0)) : FE(mUtil.filter(p => p.type === "service").reduce((s, p) => s + (Number(p.amount) || 0), 0))}</span>
               </div>
             </div>
           </div>}
-        </>}
+        </div>
+
+        {/* ═══ মাস সিলেক্টর ═══ */}
+        <div style={{ display: "flex", gap: 8, margin: "12px 0", padding: "0 4px" }}>
+          <select className="inp" style={{ flex: 1, fontSize: 14 }} value={selM} onChange={e => setSelM(Number(e.target.value))}>
+            {(bn ? MBN : MEN).map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <select className="inp" style={{ width: 90, fontSize: 14 }} value={selY} onChange={e => setSelY(Number(e.target.value))}>
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
+        {/* 6. ভাড়ার হিসাব নিকাশ */}
+        <div className={`acc-item${openAcc.hisab ? " open" : ""}`} style={{ background: openAcc.hisab ? "rgba(16,185,129,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("hisab")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(16,185,129,.08)" }}>📊</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "ভাড়ার হিসাব নিকাশ" : "Rent Accounting"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{bn ? (MBN[selM] || "") : (MEN[selM] || "")} {selY}</div>
+              </div>
+            </div>
+            <span className="acc-arrow">▶</span>
+          </div>
+          {openAcc.hisab && <div className="acc-body">
+            <div className="acc-sub">
+              {/* আদায় — nested */}
+              <div className={`acc-item${openAcc.collected ? " open" : ""}`} style={{ margin: "4px 0", background: openAcc.collected ? "rgba(16,185,129,.03)" : "rgba(255,255,255,.015)" }}>
+                <div className="acc-head" onClick={() => toggleAcc("collected")} style={{ padding: "12px 14px" }}>
+                  <div className="acc-head-left">
+                    <span style={{ fontSize: 16 }}>✅</span>
+                    <div>
+                      <span className="acc-label">{bn ? "আদায়" : "Collected"}</span>
+                      <div style={{ fontSize: 11, color: "#34D399" }}>{paidSet.size} {bn ? "জন দিয়েছে" : "paid"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="acc-value" style={{ color: "#34D399" }}>৳{bn ? FM(rentCollected) : FE(rentCollected)}</span>
+                    <span className="acc-arrow">▶</span>
+                  </div>
+                </div>
+                {openAcc.collected && <div className="acc-body">
+                  {[...paidSet].map(tid => {
+                    const t = tenants.find(x => x.id === tid);
+                    if (!t) return null;
+                    const pay = mRent.find(p => p.tenantId === tid);
+                    return <div key={tid} className="acc-sub-item" style={{ marginBottom: 2 }}>
+                      <div><div style={{ fontWeight: 600, fontSize: 13, color: "#E2E8F0" }}>{t.name}</div><div style={{ fontSize: 11, color: "#475569" }}>{pay?.paidAt?.split("T")[0]}</div></div>
+                      <span style={{ fontWeight: 700, color: "#34D399" }}>৳{bn ? FM(pay?.amount) : FE(pay?.amount)}</span>
+                    </div>;
+                  })}
+                  {paidSet.size === 0 && <div style={{ padding: 16, textAlign: "center", color: "#475569", fontSize: 13 }}>{bn ? "এই মাসে কেউ দেয়নি" : "None collected yet"}</div>}
+                </div>}
+              </div>
+
+              {/* বাকি — nested */}
+              <div className={`acc-item${openAcc.due ? " open" : ""}`} style={{ margin: "4px 0", background: openAcc.due ? "rgba(239,68,68,.03)" : "rgba(255,255,255,.015)" }}>
+                <div className="acc-head" onClick={() => toggleAcc("due")} style={{ padding: "12px 14px" }}>
+                  <div className="acc-head-left">
+                    <span style={{ fontSize: 16 }}>🔴</span>
+                    <div>
+                      <span className="acc-label">{bn ? "বাকি" : "Due"}</span>
+                      <div style={{ fontSize: 11, color: "#EF4444" }}>{dueT.length} {bn ? "জনের বকেয়া" : "unpaid"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="acc-value" style={{ color: "#EF4444" }}>৳{bn ? FM(dueT.reduce((s, t) => s + (Number(t.rent) || 0), 0)) : FE(dueT.reduce((s, t) => s + (Number(t.rent) || 0), 0))}</span>
+                    <span className="acc-arrow">▶</span>
+                  </div>
+                </div>
+                {openAcc.due && <div className="acc-body">
+                  {dueT.map(t => <div key={t.id} className="acc-sub-item" style={{ marginBottom: 2 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "#E2E8F0" }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: "#475569" }}>{t.phone}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontWeight: 700, color: "#EF4444" }}>৳{bn ? FM(t.rent) : FE(t.rent)}</span>
+                      <button className="btn bp bs" onClick={(e) => { e.stopPropagation(); setEdit(t); setModal("pay"); }} style={{ padding: "4px 10px", fontSize: 11 }}>💰</button>
+                    </div>
+                  </div>)}
+                  {dueT.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "#34D399", fontSize: 14 }}>🎉 {bn ? "সবাই পরিশোধ করেছে!" : "All paid!"}</div>}
+                </div>}
+              </div>
+            </div>
+          </div>}
+        </div>
+
+        {/* 7. নোটিশ দিন */}
+        <div className={`acc-item${openAcc.notice ? " open" : ""}`} style={{ background: openAcc.notice ? "rgba(236,72,153,.02)" : "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => toggleAcc("notice")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(236,72,153,.08)" }}>📨</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "নোটিশ দিন" : "Send Notice"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{(notices || []).length} {bn ? "টি নোটিশ" : "notices"}{totalAlerts > 0 ? ` • ${totalAlerts} ${bn ? "নতুন" : "new"}` : ""}</div>
+              </div>
+            </div>
+            <span className="acc-arrow">▶</span>
+          </div>
+          {openAcc.notice && <div className="acc-body">
+            <div className="acc-sub">
+              <button className="btn bp" style={{ width: "100%", marginBottom: 12 }} onClick={() => setModal("llNotice")}>📨 {bn ? "নতুন নোটিশ পাঠান" : "Send New Notice"}</button>
+              {(notices || []).slice(0, 5).map(n => {
+                const isSent = n.fromId === me?.id;
+                const st = STATUS_MAP.find(s => s.k === n.status) || STATUS_MAP[0];
+                return <div key={n.id} className="acc-sub-item" style={{ marginBottom: 2, cursor: "pointer" }} onClick={() => { setTab2("notices"); setSelNotice(n); }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: "#E2E8F0" }}>{n.subject}</div>
+                    <div style={{ fontSize: 11, color: "#475569" }}>{isSent ? "📤" : "📩"} {n.createdAt?.split("T")[0]}</div>
+                  </div>
+                  <span className="badge" style={{ background: `${st.c}15`, color: st.c, fontSize: 10 }}>{st.i}</span>
+                </div>;
+              })}
+              {(notices || []).length > 5 && <button className="btn bg" style={{ width: "100%", marginTop: 8 }} onClick={() => setTab2("notices")}>{bn ? "সব নোটিশ দেখুন →" : "View all notices →"}</button>}
+            </div>
+          </div>}
+        </div>
+
+        {/* 8. সাপোর্ট টীম */}
+        <div className="acc-item" style={{ background: "rgba(255,255,255,.02)" }}>
+          <div className="acc-head" onClick={() => window.open("https://wa.me/8801700000000", "_blank")}>
+            <div className="acc-head-left">
+              <div className="acc-icon" style={{ background: "rgba(37,211,102,.08)" }}>💬</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "সাপোর্ট টীম" : "Support Team"}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{bn ? "সমস্যা হলে যোগাযোগ করুন" : "Contact for help"}</div>
+              </div>
+            </div>
+            <span style={{ fontSize: 14, color: "#25D366" }}>→</span>
+          </div>
+        </div>
+
       </div>}
 
       {/* ═══════════════════════════════ */}
@@ -2349,7 +2660,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
     {modal === "pay" && edit && <PayModal bn={bn} tenant={edit} mk={mk}
       onSave={async (p) => { await recordPayment(p); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "detail" && edit && <div className="ov" onClick={() => setModal(null)}>
-      <div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+      <div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}><div className="mdl-handle" />
         <h3 style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 8 }}>👤 {edit.name}</h3>
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>📞 {edit.phone} {edit.nid ? `• NID: ${edit.nid}` : ""}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -2440,7 +2751,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       onSave={async (d) => { await onAddMeterReading(d); setModal(null); }} onClose={() => setModal(null)} />}
     {modal === "moveOut" && edit && <MoveOutModal bn={bn} tenant={edit} payments={payments}
       onMoveOut={async (tid, s) => { await onMoveOut(tid, s); setModal(null); setEdit(null); }} onClose={() => setModal(null)} />}
-    {modal === "paymentInfo" && <div className="ov" onClick={() => setModal(null)}><div className="mdl" onClick={e => e.stopPropagation()}>
+    {modal === "paymentInfo" && <div className="ov" onClick={() => setModal(null)}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
       <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>💳 {bn ? "পেমেন্ট তথ্য" : "Payment Info"}</h2>
       <p style={{ fontSize: 11, color: "#475569", marginBottom: 14 }}>{bn ? "ভাড়াটিয়ারা এই তথ্য দেখতে পাবে" : "Tenants will see this info"}</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2524,23 +2835,10 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
 
   return <div>
     <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "ভাড়াটিয়া" : "TENANT"} icon="👤" onLogout={onLogout}>
-      {/* ═══ NAV TABS inline ═══ */}
-      {me?.unitId && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ textAlign: "center", cursor: "pointer", padding: "5px 14px", borderRadius: 10, background: tab === t.k ? "rgba(16,185,129,.12)" : "transparent", transition: "all .15s", position: "relative" }}>
-          <div style={{ fontSize: 18 }}>{t.i}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: tab === t.k ? "#34D399" : "#475569", marginTop: 2 }}>{t.l}</div>
-          {t.badge > 0 && <span style={{ position: "absolute", top: -2, right: 0, width: 15, height: 15, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 7, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.badge}</span>}
-        </div>)}
-      </div>}
-      {/* 🔔 Notification Bell */}
-      <div onClick={() => setTab("notices")} style={{ position: "relative", cursor: "pointer", padding: "6px 10px", borderRadius: 10, background: tab === "notices" ? "rgba(16,185,129,.1)" : "transparent" }}>
-        <span style={{ fontSize: 18 }}>🔔</span>
-        {totalAlerts > 0 && <span style={{ position: "absolute", top: 0, right: 2, minWidth: 18, height: 18, borderRadius: 9, background: "#EF4444", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", animation: "pulse 2s infinite" }}>{totalAlerts}</span>}
-      </div>
-      {/* 👤 User Profile Dropdown */}
+      {/* 👤 User Profile */}
       <div style={{ position: "relative" }}>
-        <div onClick={() => setShowProfile(!showProfile)} style={{ cursor: "pointer", padding: "4px 10px", background: showProfile ? "rgba(16,185,129,.08)" : "rgba(255,255,255,.025)", borderRadius: 8, fontSize: 11, color: "#64748B", display: "flex", alignItems: "center", gap: 4 }}>
-          👤 {me?.name?.split(" ")[0]} <span style={{ fontSize: 8, opacity: .5 }}>{showProfile ? "▲" : "▼"}</span>
+        <div onClick={() => setShowProfile(!showProfile)} style={{ cursor: "pointer", padding: "4px 10px", background: showProfile ? "rgba(16,185,129,.08)" : "rgba(255,255,255,.025)", borderRadius: 8, fontSize: 12, color: "#94A3B8", display: "flex", alignItems: "center", gap: 4, minHeight: 32 }}>
+          👤 {me?.name?.split(" ")[0]}
         </div>
         {showProfile && <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: "#111827", border: "1px solid rgba(255,255,255,.06)", borderRadius: 14, padding: 18, zIndex: 200, boxShadow: "0 12px 40px rgba(0,0,0,.5)", animation: "fadeIn .2s" }} onClick={e => e.stopPropagation()}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid rgba(255,255,255,.04)" }}>
@@ -2566,7 +2864,29 @@ function TenantPanel({ me, landlord, units, properties, payments, bn, lang, setL
       </div>
     </Bar>
 
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 24px" }}>
+    {/* ═══ BOTTOM NAV (mobile) ═══ */}
+    {me?.unitId && <div className="btm-nav">
+      {[{ k: "home", i: "🏠", l: bn ? "হোম" : "Home" },
+        { k: "bills", i: "📄", l: bn ? "বিল" : "Bills" },
+        { k: "meters", i: "⚡", l: bn ? "মিটার" : "Meter" },
+        { k: "history", i: "📋", l: bn ? "ইতিহাস" : "History" },
+        { k: "notices", i: "📨", l: bn ? "নোটিশ" : "Notices", badge: totalAlerts },
+      ].map(t => <div key={t.k} className={`btm-nav-item${tab === t.k ? " active" : ""}`} onClick={() => setTab(t.k)}>
+        <span className="nav-icon">{t.i}</span>
+        <span className="nav-label">{t.l}</span>
+        {t.badge > 0 && <span className="btm-nav-badge">{t.badge}</span>}
+      </div>)}
+    </div>}
+
+    <div className="content-area" style={{ maxWidth: 700 }}>
+      {/* Desktop tabs */}
+      {me?.unitId && <div className="hide-mobile" style={{ display: "flex", gap: 4, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
+        {tabs.map(t => <div key={t.k} onClick={() => setTab(t.k)} style={{ padding: "8px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", background: tab === t.k ? "rgba(16,185,129,.1)" : "transparent", color: tab === t.k ? "#34D399" : "#64748B", border: `1px solid ${tab === t.k ? "rgba(16,185,129,.2)" : "transparent"}`, position: "relative" }}>
+          {t.i} {t.l}
+          {t.badge > 0 && <span style={{ marginLeft: 4, padding: "1px 6px", borderRadius: 8, background: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 800 }}>{t.badge}</span>}
+        </div>)}
+      </div>}
+
       {!me?.unitId ? <div className="G2" style={{ padding: 50, textAlign: "center", animation: "fadeIn .4s" }}>
         <div style={{ fontSize: 52, marginBottom: 12 }}>🏠</div>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 6 }}>{bn ? "স্বাগতম!" : "Welcome!"}</h2>
@@ -3071,7 +3391,7 @@ function AddPropModal({ bn, onSave, onClose }) {
     setBusy(true);
     try { await onSave(f); } catch(e) { console.error(e); } finally { setBusy(false); }
   };
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>🏘️ {bn ? "নতুন বাড়ি" : "New Property"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div><label className="lbl">{bn ? "নাম" : "Name"} *</label><input className="inp" value={f.name} onChange={e => set("name", e.target.value)} /></div>
@@ -3135,7 +3455,7 @@ function ManualAddTenantModal({ bn, units, properties, onSave, onClose }) {
     try { await onSave(f, unitId || null, rent); } catch(e) { console.error(e); } finally { setBusy(false); }
   };
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>👤➕ {bn ? "ম্যানুয়ালি ভাড়াটিয়া যোগ" : "Add Tenant Manually"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div><label className="lbl">{bn ? "নাম" : "Name"} *</label><input className="inp" value={f.name} onChange={e => set("name", e.target.value)} /></div>
@@ -3171,7 +3491,7 @@ function ManualAddTenantModal({ bn, units, properties, onSave, onClose }) {
 
 function AssignModal({ bn, unitId, tenants, onSave, onClose }) {
   const [tid, setTid] = useState(""); const [rent, setRent] = useState(""); const [adv, setAdv] = useState(""); const [date, setDate] = useState(TODAY()); const [notes, setNotes] = useState("");
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>👤 {bn ? "নির্ধারণ" : "Assign"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div><label className="lbl">{bn ? "ভাড়াটিয়া" : "Tenant"} *</label>
@@ -3198,7 +3518,7 @@ function PayModal({ bn, tenant, mk, onSave, onClose, payType }) {
   const [method, setMethod] = useState("bkash");
   const [status, setStatus] = useState("paid");
   const [note, setNote] = useState("");
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>💰 {bn ? "ভাড়া" : "Pay"}</h2>
     <div style={{ fontSize: 12, color: "#475569", marginBottom: 16 }}>{tenant.name}</div>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -3231,7 +3551,7 @@ function UtilityPayModal({ bn, tenant, mk, utilTypes, onSave, onClose }) {
   const [method, setMethod] = useState("bkash");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>📄 {bn ? "ইউটিলিটি বিল" : "Utility Bill"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div><label className="lbl">{bn ? "বিলের ধরন" : "Bill Type"}</label>
@@ -3270,7 +3590,7 @@ function ReceiptModal({ bn, payment, tenant, landlord, unit, prop, utilTypes, on
   const ut = utilTypes?.find(u => u.k === payment.type);
   const pm = PAY.find(m => m.k === payment.method);
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     {/* Receipt Header */}
     <div style={{ textAlign: "center", marginBottom: 20 }}>
       <div style={{ fontSize: 36, marginBottom: 4 }}>🧾</div>
@@ -3340,7 +3660,7 @@ function NoticeModal({ bn, fromId, toId, onSave, onClose }) {
     ? ["মেরামত দরকার", "পানির সমস্যা", "বিদ্যুতের সমস্যা", "গেটের চাবি", "পরিষ্কার-পরিচ্ছন্নতা", "অন্যান্য"]
     : ["Repair needed", "Water issue", "Electricity issue", "Gate key", "Cleanliness", "Other"];
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📨 {bn ? "নোটিশ পাঠান" : "Send Notice"}</h2>
     <p style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>{bn ? "বাড়িওয়ালাকে একটি নোটিশ/অনুরোধ পাঠান" : "Send a notice to your landlord"}</p>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -3386,7 +3706,7 @@ function LandlordNoticeModal({ bn, tenants, units, properties, fromId, onSave, o
     setBusy(false);
   };
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📨 {bn ? "ভাড়াটিয়াদের নোটিশ" : "Notice to Tenants"}</h2>
     <p style={{ fontSize: 11, color: "#475569", marginBottom: 14 }}>{bn ? "একজন বা সব ভাড়াটিয়াকে নোটিশ পাঠান" : "Send to one or all tenants"}</p>
 
@@ -3450,7 +3770,7 @@ function AddExpenseModal({ bn, properties, onSave, onClose }) {
     { k: "tax", l: bn ? "🏛️ কর/ফি" : "🏛️ Tax", c: "#A78BFA" },
     { k: "other", l: bn ? "📦 অন্যান্য" : "📦 Other", c: "#94A3B8" },
   ];
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 14 }}>🧾 {bn ? "খরচ যোগ" : "Add Expense"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div><label className="lbl">{bn ? "ক্যাটাগরি" : "Category"}</label>
@@ -3495,7 +3815,7 @@ function AddAgreementModal({ bn, tenants, units, properties, landlordId, onSave,
     ? ["ভাড়া প্রতি মাসের ১-৫ তারিখে পরিশোধযোগ্য", "৩ মাসের নোটিশ ছাড়া বাতিল নয়", "ক্ষতি হলে ভাড়াটিয়া দায়ী", "পোষা প্রাণী নিষেধ", "সাব-লেট নিষেধ"]
     : ["Rent due 1st-5th monthly", "3 months notice for termination", "Tenant liable for damages", "No pets", "No subletting"];
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📜 {bn ? "নতুন চুক্তিপত্র" : "New Agreement"}</h2>
     <p style={{ fontSize: 11, color: "#475569", marginBottom: 14 }}>{bn ? "ভাড়াটিয়ার সাথে চুক্তি তৈরি করুন" : "Create rental agreement"}</p>
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3556,7 +3876,7 @@ function MeterReadingModal({ bn, units, tenants, properties, meters, onSave, onC
     }
   }, [uid, meters]);
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>⚡ {bn ? "মিটার রিডিং" : "Meter Reading"}</h2>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div><label className="lbl">{bn ? "ইউনিট" : "Unit"}</label>
@@ -3605,7 +3925,7 @@ function MoveOutModal({ bn, tenant, payments, onMoveOut, onClose }) {
   const curRent = (payments||[]).find(p => p.tenantId === tenant?.id && (!p.type || p.type === "rent") && p.monthKey === mk);
   const hasDue = !curRent && tenant?.rent > 0;
 
-  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}>
+  return <div className="ov" onClick={onClose}><div className="mdl" onClick={e => e.stopPropagation()}><div className="mdl-handle" />
     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>🚪 {bn ? "স্থানান্তর প্রক্রিয়া" : "Move-out Process"}</h2>
     <p style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>{tenant?.name}</p>
 
