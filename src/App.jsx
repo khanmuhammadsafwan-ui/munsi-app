@@ -1073,17 +1073,20 @@ function RegTenant({ bn, user, onReg, onBack }) {
 }
 
 // ═══ TOP BAR ═══
-function Bar({ bn, lang, setLang, label, icon, user, userId, onLogout, onRefresh, children }) {
+function Bar({ bn, lang, setLang, label, icon, user, userId, onLogout, onRefresh, onProfileClick, children }) {
   return <div className="top-bar">
     <div className="top-bar-inner">
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 20 }}>📒</span>
-        <div><div style={{ fontSize: 14, fontWeight: 800, background: "linear-gradient(135deg,#34D399,#60A5FA)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", lineHeight: 1 }}>মুন্সী</div>
-          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{icon} {label}</div></div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, background: "linear-gradient(135deg,#34D399,#60A5FA)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", lineHeight: 1 }}>মুন্সী</div>
+          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{icon} {label}</div>
+          {userId && <div style={{ fontSize: 10, color: "#34D399", fontFamily: "monospace", letterSpacing: .5, lineHeight: 1.2 }}>🆔 {userId}</div>}
+        </div>
       </div>
       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
         {children}
-        {user && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "rgba(255,255,255,.025)", borderRadius: 10, border: "1px solid rgba(16,185,129,.08)" }}>
+        {user && <div onClick={onProfileClick} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(255,255,255,.025)", borderRadius: 10, border: "1px solid rgba(16,185,129,.08)", cursor: onProfileClick ? "pointer" : "default" }}>
           <span style={{ fontSize: 14 }}>{icon}</span>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#E2E8F0", lineHeight: 1.2 }}>{user}</div>
@@ -1598,8 +1601,55 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
   const filteredTenants = searchQ ? tenants.filter(t => t.unitId && (t.name || "").toLowerCase().includes(searchQ.toLowerCase())) : [];
 
   return <div>
-    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "বাড়িওয়ালা" : "LANDLORD"} icon="🏠" user={me?.name} userId={userId} onLogout={onLogout} onRefresh={onRefresh}>
+    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "বাড়িওয়ালা" : "LANDLORD"} icon="🏠" user={me?.name} userId={userId} onLogout={onLogout} onRefresh={onRefresh} onProfileClick={() => toggleAcc("headerProfile")}>
     </Bar>
+
+    {/* ═══ PROFILE DROPDOWN (below header) ═══ */}
+    {openAcc.headerProfile && <div style={{ position: "relative", zIndex: 90, animation: "fadeIn .2s" }}>
+      <div style={{ margin: "0 12px 0", padding: "16px 18px", borderRadius: "0 0 16px 16px", background: "rgba(15,23,42,.98)", border: "1px solid rgba(16,185,129,.1)", borderTop: "none", backdropFilter: "blur(20px)" }}>
+        <div className="acc-sub">
+          <div className="acc-sub-item">
+            <span className="acc-label">📞 {bn ? "মোবাইল নাম্বার" : "Mobile Number"}</span>
+            <span className="acc-value">{me?.phone || "—"}</span>
+          </div>
+          <div className="acc-sub-item">
+            <span className="acc-label">🪪 NID {bn ? "নাম্বার" : "Number"}</span>
+            <span className="acc-value">{me?.nid || "—"}</span>
+          </div>
+          <div className="acc-sub-item">
+            <span className="acc-label">📋 LICENSE / TIN</span>
+            <span className="acc-value">{me?.tinNo || me?.holdingNo || "—"}</span>
+          </div>
+
+          {/* লেনদেনের মাধ্যম — nested */}
+          <div className={`acc-item${openAcc.lenden ? " open" : ""}`} style={{ margin: "6px 0 0", background: openAcc.lenden ? "rgba(251,191,36,.03)" : "rgba(255,255,255,.015)" }}>
+            <div className="acc-head" onClick={() => toggleAcc("lenden")} style={{ padding: "12px 14px", minHeight: 48 }}>
+              <div className="acc-head-left">
+                <span style={{ fontSize: 16 }}>💳</span>
+                <span style={{ fontWeight: 700, color: "#E2E8F0", fontSize: 14 }}>{bn ? "লেনদেনের মাধ্যম" : "Payment Methods"}</span>
+              </div>
+              <span className="acc-arrow">▶</span>
+            </div>
+            {openAcc.lenden && <div className="acc-body" style={{ paddingTop: 0 }}>
+              <div className="acc-sub-item" style={{ marginBottom: 4 }}>
+                <span className="acc-label">📱 bKash</span>
+                <span className="acc-value" style={{ color: "#E2136E" }}>{me?.bkash || "—"}</span>
+              </div>
+              <div className="acc-sub-item" style={{ marginBottom: 4 }}>
+                <span className="acc-label">📱 Nagad</span>
+                <span className="acc-value" style={{ color: "#F6921E" }}>{me?.nagad || "—"}</span>
+              </div>
+              <div className="acc-sub-item">
+                <span className="acc-label">🏦 Bank Account</span>
+                <span className="acc-value" style={{ fontSize: 12 }}>{me?.bank || "—"}</span>
+              </div>
+            </div>}
+          </div>
+
+          <button className="btn bp" style={{ width: "100%", marginTop: 10 }} onClick={() => { toggleAcc("headerProfile"); setModal("editProfile"); }}>✏️ {bn ? "প্রফাইল সম্পাদনা" : "Edit Profile"}</button>
+        </div>
+      </div>
+    </div>}
 
     {/* ═══ BOTTOM NAV ═══ */}
     <div className="btm-nav">
@@ -1620,66 +1670,7 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
       {/* ═══════════════════════════════ */}
       {tab2 === "dashboard" && <div style={{ animation: "fadeIn .3s" }}>
 
-        {/* ═══ 1. নাম / প্রফাইল (with photo) ═══ */}
-        <div className={`acc-item${openAcc.profile ? " open" : ""}`} style={{ background: openAcc.profile ? "rgba(16,185,129,.02)" : "rgba(255,255,255,.02)" }}>
-          <div className="acc-head" onClick={() => toggleAcc("profile")}>
-            <div className="acc-head-left">
-              <div className="acc-icon" style={{ background: "rgba(99,102,241,.08)", borderRadius: 14 }}>
-                {me?.photoURL ? <img src={me.photoURL} alt="" style={{ width: 40, height: 40, borderRadius: 14, objectFit: "cover" }} /> : "👤"}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{bn ? "নাম / প্রফাইল" : "Name / Profile"}</div>
-                <div style={{ fontSize: 12, color: "#475569" }}>{me?.name || "—"}</div>
-              </div>
-            </div>
-            <span className="acc-arrow">▶</span>
-          </div>
-          {openAcc.profile && <div className="acc-body">
-            <div className="acc-sub">
-              <div className="acc-sub-item">
-                <span className="acc-label">📞 {bn ? "মোবাইল নাম্বার" : "Mobile Number"}</span>
-                <span className="acc-value">{me?.phone || "—"}</span>
-              </div>
-              <div className="acc-sub-item">
-                <span className="acc-label">🪪 NID {bn ? "নাম্বার" : "Number"}</span>
-                <span className="acc-value">{me?.nid || "—"}</span>
-              </div>
-              <div className="acc-sub-item">
-                <span className="acc-label">📋 LICENSE / TIN {bn ? "নাম্বার" : "Number"}</span>
-                <span className="acc-value">{me?.tinNo || me?.holdingNo || "—"}</span>
-              </div>
-
-              {/* লেনদেনের মাধ্যম — nested sub-menu inside profile */}
-              <div className={`acc-item${openAcc.lenden ? " open" : ""}`} style={{ margin: "6px 0 0", background: openAcc.lenden ? "rgba(251,191,36,.03)" : "rgba(255,255,255,.015)" }}>
-                <div className="acc-head" onClick={() => toggleAcc("lenden")} style={{ padding: "12px 14px", minHeight: 48 }}>
-                  <div className="acc-head-left">
-                    <span style={{ fontSize: 16 }}>💳</span>
-                    <span style={{ fontWeight: 700, color: "#E2E8F0", fontSize: 14 }}>{bn ? "লেনদেনের মাধ্যম" : "Payment Methods"}</span>
-                  </div>
-                  <span className="acc-arrow">▶</span>
-                </div>
-                {openAcc.lenden && <div className="acc-body" style={{ paddingTop: 0 }}>
-                  <div className="acc-sub-item" style={{ marginBottom: 4 }}>
-                    <span className="acc-label">📱 bKash</span>
-                    <span className="acc-value" style={{ color: "#E2136E" }}>{me?.bkash || "—"}</span>
-                  </div>
-                  <div className="acc-sub-item" style={{ marginBottom: 4 }}>
-                    <span className="acc-label">📱 Nagad</span>
-                    <span className="acc-value" style={{ color: "#F6921E" }}>{me?.nagad || "—"}</span>
-                  </div>
-                  <div className="acc-sub-item">
-                    <span className="acc-label">🏦 Bank Account</span>
-                    <span className="acc-value" style={{ fontSize: 12 }}>{me?.bank || "—"}</span>
-                  </div>
-                </div>}
-              </div>
-
-              <button className="btn bp" style={{ width: "100%", marginTop: 10 }} onClick={() => setModal("editProfile")}>✏️ {bn ? "প্রফাইল সম্পাদনা" : "Edit Profile"}</button>
-            </div>
-          </div>}
-        </div>
-
-        {/* ═══ 2. বাড়ির বিবরণ ═══ */}
+        {/* ═══ 1. বাড়ির বিবরণ ═══ */}
         <div className={`acc-item${openAcc.bari ? " open" : ""}`} style={{ background: openAcc.bari ? "rgba(139,92,246,.02)" : "rgba(255,255,255,.02)" }}>
           <div className="acc-head" onClick={() => toggleAcc("bari")}>
             <div className="acc-head-left">
