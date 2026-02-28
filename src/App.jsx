@@ -542,8 +542,8 @@ function CSS() {
       .hide-desktop{display:none!important}
       .ov{align-items:center;padding:16px}
       .mdl{border-radius:22px;max-height:88vh}
-      .btm-nav{display:none}
-      .content-area{padding:16px 16px 40px}
+      .btm-nav{max-width:480px;margin:0 auto;border-radius:20px 20px 0 0}
+      .content-area{padding:16px 16px calc(80px + env(safe-area-inset-bottom,0px))}
     }
   `}</style>;
 }
@@ -1073,7 +1073,7 @@ function RegTenant({ bn, user, onReg, onBack }) {
 }
 
 // ═══ TOP BAR ═══
-function Bar({ bn, lang, setLang, label, icon, user, onLogout, onRefresh, children }) {
+function Bar({ bn, lang, setLang, label, icon, user, userId, onLogout, onRefresh, children }) {
   return <div className="top-bar">
     <div className="top-bar-inner">
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1083,10 +1083,16 @@ function Bar({ bn, lang, setLang, label, icon, user, onLogout, onRefresh, childr
       </div>
       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
         {children}
-        <span className="hide-mobile" style={{ fontSize: 11, color: "#64748B", padding: "4px 8px", background: "rgba(255,255,255,.025)", borderRadius: 8 }}>{icon} {user}</span>
+        {user && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "rgba(255,255,255,.025)", borderRadius: 10, border: "1px solid rgba(16,185,129,.08)" }}>
+          <span style={{ fontSize: 14 }}>{icon}</span>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#E2E8F0", lineHeight: 1.2 }}>{user}</div>
+            {userId && <div style={{ fontSize: 10, color: "#34D399", fontFamily: "monospace", letterSpacing: .5, lineHeight: 1 }}>🆔 {userId}</div>}
+          </div>
+        </div>}
         {onRefresh && <button className="btn bg bs" onClick={onRefresh} title="Refresh">🔄</button>}
         <button className="btn bg bs" onClick={() => setLang(bn ? "en" : "bn")} style={{ padding: "6px 10px" }}>{bn ? "EN" : "বাং"}</button>
-        <button className="btn bd bs" onClick={onLogout} style={{ padding: "6px 10px" }}>{bn ? "🚪" : "🚪"}</button>
+        <button className="btn bd bs" onClick={onLogout} style={{ padding: "6px 10px" }}>🚪</button>
       </div>
     </div>
   </div>;
@@ -1592,10 +1598,10 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
   const filteredTenants = searchQ ? tenants.filter(t => t.unitId && (t.name || "").toLowerCase().includes(searchQ.toLowerCase())) : [];
 
   return <div>
-    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "বাড়িওয়ালা" : "LANDLORD"} icon="🏠" user={me?.name} onLogout={onLogout} onRefresh={onRefresh}>
+    <Bar bn={bn} lang={lang} setLang={setLang} label={bn ? "বাড়িওয়ালা" : "LANDLORD"} icon="🏠" user={me?.name} userId={userId} onLogout={onLogout} onRefresh={onRefresh}>
     </Bar>
 
-    {/* ═══ BOTTOM NAV (mobile) ═══ */}
+    {/* ═══ BOTTOM NAV ═══ */}
     <div className="btm-nav">
       {[{ k: "dashboard", i: "🏠", l: bn ? "হোম" : "Home" },
         { k: "hisab", i: "💼", l: bn ? "হিসাব" : "Accounts" },
@@ -1609,38 +1615,10 @@ function LandlordPanel({ me, tenants, properties, units, payments, bn, lang, set
 
     <div className="content-area">
 
-      {/* ═══ 3 MAIN TABS (desktop) ═══ */}
-      <div className="hide-mobile" style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-        {[{ k: "dashboard", l: bn ? "🏠 ড্যাশবোর্ড" : "🏠 Dashboard" },
-          { k: "hisab", l: bn ? "💼 হিসাব-নিকাশ" : "💼 Accounts" },
-          { k: "notices", l: `📨 ${bn ? "নোটিশ" : "Notices"}${totalAlerts ? ` (${totalAlerts})` : ""}` },
-        ].map(t => <div key={t.k} className={`main-tab${tab2 === t.k ? " active" : ""}`} onClick={() => { setTab2(t.k); setSelProp(null); setSelFloor(null); setSelNotice(null); }}>{t.l}</div>)}
-      </div>
-
       {/* ═══════════════════════════════ */}
       {/* ═══ DASHBOARD / PROFILE TAB ═══ */}
       {/* ═══════════════════════════════ */}
       {tab2 === "dashboard" && <div style={{ animation: "fadeIn .3s" }}>
-
-        {/* ═══ USER ID BADGE ═══ */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "16px 18px", borderRadius: 16, background: "linear-gradient(135deg, rgba(16,185,129,.06), rgba(59,130,246,.04))", border: "1px solid rgba(16,185,129,.1)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="av" style={{ width: 48, height: 48, background: "rgba(16,185,129,.08)", fontSize: 22 }}>🏠</div>
-            <div>
-              <div style={{ fontWeight: 800, color: "#fff", fontSize: 16 }}>{me?.name || "—"}</div>
-              <div style={{ fontSize: 12, color: "#34D399", fontFamily: "monospace", letterSpacing: 1 }}>🆔 {userId}</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {totalAlerts > 0 && <div onClick={() => setTab2("notices")} style={{ position: "relative", cursor: "pointer", padding: 8 }}>
-              <span style={{ fontSize: 20 }}>🔔</span>
-              <span style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{totalAlerts}</span>
-            </div>}
-            <div onClick={() => window.open("https://wa.me/8801700000000", "_blank")} style={{ cursor: "pointer", padding: 8 }}>
-              <span style={{ fontSize: 18 }}>💬</span>
-            </div>
-          </div>
-        </div>
 
         {/* ═══ 1. নাম / প্রফাইল (with photo) ═══ */}
         <div className={`acc-item${openAcc.profile ? " open" : ""}`} style={{ background: openAcc.profile ? "rgba(16,185,129,.02)" : "rgba(255,255,255,.02)" }}>
